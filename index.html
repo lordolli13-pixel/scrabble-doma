@@ -326,6 +326,8 @@
   
   let historyState = null;
   let historyPlayerIdx = null;
+  let rejectSequence = 0;
+  let pendingReject = null;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -405,7 +407,8 @@
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
     if (data.type === 'PASS_TURN') handleRemotePass();
-    if (data.type === 'REJECT_TURN') handleRejectTurnRequest();
+    if (data.type === 'REJECT_TURN') handleRejectTurnRequest(conn);
+    if (data.type === 'REJECT_ACK') handleRejectAck(conn, data);
   }
 
   function handleClientMessage(data) {
@@ -416,11 +419,23 @@
     }
 
     if (data.type === 'REJECT_RESULT') {
-      // NEUZNANÝ TAH: na klientovi uděláme tvrdou obnovu celé hry.
-      // Nesmí zůstat ani jeden starý element s kamenem v DOM.
+      // Potvrzený návrat tahu: klient nejdříve tvrdě obnoví data i DOM,
+      // potom pošle HOSTU ACK. Pokud host ACK nedostane, stav znovu odešle.
       forceApplyRemoteState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
+
+      const ack = {
+        type: 'REJECT_ACK',
+        rejectId: data.rejectId,
+        stateHash: data.stateHash,
+        clientId: myId
+      };
+      if (hostConn && hostConn.open) {
+        hostConn.send(ack);
+        setTimeout(() => { if (hostConn && hostConn.open) hostConn.send(ack); }, 250);
+        setTimeout(() => { if (hostConn && hostConn.open) hostConn.send(ack); }, 750);
+      }
       return;
     }
 
@@ -898,11 +913,26 @@
     }
   }
 
-  function handleRejectTurnRequest() {
+  function makeStateHash(state) {
+    // Jednoduchý stabilní podpis stavu hry. Nejde o bezpečnostní hash,
+    // pouze o ověření, že klient opravdu přijal stejný stav.
+    return JSON.stringify({
+      players: state.players,
+      activePlayerIdx: state.activePlayerIdx,
+      tileBag: state.tileBag,
+      boardState: state.boardState,
+      currentCommentary: state.currentCommentary
+    });
+  }
+
+  function handleRejectTurnRequest(requesterConn = null) {
     if (!isHost) return;
     if (!historyState) {
       return alert('Žádný tah k neuznání!');
     }
+    if (pendingReject) return;
+
+    const requester = requesterConn;
 
     // Snapshot musí být stav PŘED posledním tahem.
     // Nikdy zde neskládáme desku zpětně z jednotlivých kamenů.
@@ -940,18 +970,64 @@
     // 2. Poslat obnovený stav KAŽDÉMU klientovi samostatně.
     // Nepoužíváme jen obecný SYNC_STATE, protože klient musí vědět,
     // že jde o návrat po NEUZNÁNÍ a má udělat tvrdý reset desky.
+    const rejectId = `${Date.now()}-${++rejectSequence}`;
+    const stateCopy = JSON.parse(JSON.stringify(restoredState));
+    const stateHash = makeStateHash(stateCopy);
     const rejectMessage = {
       type: 'REJECT_RESULT',
-      state: JSON.parse(JSON.stringify(restoredState)),
+      state: stateCopy,
       rejectedPlayerIdx: rejectedPlayerIdx,
-      timestamp: Date.now()
+      rejectId,
+      stateHash
     };
 
-    clientConns.forEach(conn => {
+    // Čekáme na potvrzení každého připojeného klienta.
+    const targets = clientConns.filter(c => c && c.open);
+    pendingReject = { rejectId, stateHash, message: rejectMessage, acks: new Set(), targets };
+
+    function sendRejectTo(conn) {
       if (conn && conn.open) {
         try { conn.send(rejectMessage); } catch (e) { console.warn('REJECT_RESULT send:', e); }
       }
+    }
+
+    targets.forEach(sendRejectTo);
+
+    // Síť může zprávu ztratit / spojení může být krátce zaneprázdněné.
+    // Proto stav několikrát zopakujeme, dokud klient nepotvrdí ACK.
+    [400, 1000, 2000, 3500].forEach(delay => {
+      setTimeout(() => {
+        if (!pendingReject || pendingReject.rejectId !== rejectId) return;
+        pendingReject.targets.forEach(conn => {
+          if (!pendingReject.acks.has(conn.peer)) sendRejectTo(conn);
+        });
+      }, delay);
     });
+
+    setTimeout(() => {
+      if (pendingReject && pendingReject.rejectId === rejectId) {
+        console.warn('REJECT_ACK nebyl přijat od všech klientů. Stav byl opakovaně odeslán.');
+        pendingReject = null;
+      }
+    }, 5000);
+  }
+
+  function handleRejectAck(conn, data) {
+    if (!isHost || !pendingReject) return;
+    if (data.rejectId !== pendingReject.rejectId) return;
+
+    if (data.stateHash === pendingReject.stateHash) {
+      pendingReject.acks.add(conn.peer);
+    } else {
+      // Klient potvrdil jiný stav -> okamžitě mu pošleme správný stav znovu.
+      try { if (conn.open) conn.send(pendingReject.message); } catch (e) {}
+      return;
+    }
+
+    const allConfirmed = pendingReject.targets.every(c => pendingReject.acks.has(c.peer));
+    if (allConfirmed) {
+      pendingReject = null;
+    }
   }
 
   function nextTurn() {
