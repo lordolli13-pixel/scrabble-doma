@@ -413,7 +413,7 @@
       players = data.players;
       updateLobbyUI();
     }
-    if (data.type === 'START_GAME' || data.type === 'SYNC_STATE') {
+    if (data.type === 'START_GAME' || data.type === 'SYNC_STATE' || data.type === 'REJECT_RESULT') {
       syncGameState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
@@ -464,27 +464,41 @@
   }
 
   function syncGameState(state) {
-    players = state.players;
-    activePlayerIdx = state.activePlayerIdx;
-    tileBag = state.tileBag;
-    boardState = state.boardState;
-    currentCommentary = state.currentCommentary;
-    
+    // Vždy vytvoříme nové objekty. Tím zabráníme tomu, aby starý DOM,
+    // rozpracovaný tah nebo reference na staré pole desky zůstaly aktivní.
+    players = JSON.parse(JSON.stringify(state.players || []));
+    activePlayerIdx = Number.isInteger(state.activePlayerIdx) ? state.activePlayerIdx : 0;
+    tileBag = JSON.parse(JSON.stringify(state.tileBag || []));
+    boardState = JSON.parse(JSON.stringify(state.boardState || Array(15).fill(null).map(() => Array(15).fill(null))));
+    currentCommentary = state.currentCommentary || '';
+
+    // Po každé synchronizaci je aktuální tah považován za potvrzený.
     uncommitted = [];
     selectedRackIndices = [];
-    if (!state.hasHistory) historyPlayerIdx = null;
+
+    if (!state.hasHistory) {
+      historyState = null;
+      historyPlayerIdx = null;
+    }
 
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) btnReject.disabled = !state.hasHistory;
+
+    // Důležité: nejprve fyzicky vyčistit desku a teprve potom ji
+    // vykreslit z nového boardState. To opravuje situaci, kdy host
+    // po neuznání viděl stará písmena, zatímco druhý hráč už měl desku správně.
+    const boardEl = document.getElementById('board');
+    if (boardEl) boardEl.innerHTML = '';
 
     renderBoard();
     updateUI();
   }
 
-  function notifyHostOrBroadcast() {
+  function notifyHostOrBroadcast(messageType = 'SYNC_STATE') {
     const state = getGameState();
     if (isHost) {
-      broadcast({ type: 'SYNC_STATE', state });
+      broadcast({ type: messageType, state });
+      // Host nesmí čekat na síťovou zprávu. Stav obnovíme okamžitě i lokálně.
       syncGameState(state);
     }
   }
@@ -839,40 +853,51 @@
   }
 
   function handleRejectTurnRequest() {
+    if (!isHost) return;
     if (!historyState) {
       return alert('Žádný tah k neuznání!');
     }
 
-    // Zapamatujeme si, kdo provedl neuznaný tah ještě před obnovením stavu.
+    // Snapshot musí být stav PŘED posledním tahem.
+    // Nikdy zde neskládáme desku zpětně z jednotlivých kamenů.
+    // Obnovíme přesnou kopii celé hry.
+    const snapshot = JSON.parse(JSON.stringify(historyState));
+
     const rejectedPlayerIdx = historyPlayerIdx !== null
       ? historyPlayerIdx
-      : historyState.activePlayerIdx;
+      : snapshot.activePlayerIdx;
 
     const rejectedPlayerName =
-      historyState.players[rejectedPlayerIdx]?.name || 'hráče';
+      snapshot.players?.[rejectedPlayerIdx]?.name || 'hráče';
 
-    // ------------------------------------------------------------
-    // VRÁCENÍ CELÉHO STAVU PŘED NEUZNANÝM TAHEM
-    // ------------------------------------------------------------
-    // Vrátí se deska, zásobník, body, pytlík i pořadí tahu.
-    players = JSON.parse(JSON.stringify(historyState.players));
-    activePlayerIdx = historyState.activePlayerIdx;
-    tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
-    boardState = JSON.parse(JSON.stringify(historyState.boardState));
+    players = snapshot.players;
+    activePlayerIdx = snapshot.activePlayerIdx;
+    tileBag = snapshot.tileBag;
+    boardState = snapshot.boardState;
 
-    // Žádné rozpracované kameny nesmí zůstat v paměti.
     uncommitted = [];
     selectedRackIndices = [];
 
     currentCommentary =
       `🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny, body i pytlík se vrátily.`;
 
-    // Jeden tah lze neuznat pouze jednou.
+    // Nejdříve vytvoříme stav pro všechny klienty s vypnutou možností
+    // znovu odmítnout tentýž tah.
     historyState = null;
     historyPlayerIdx = null;
 
-    // Host pošle opravený stav všem hráčům a zároveň ho vykreslí u sebe.
-    notifyHostOrBroadcast();
+    const restoredState = getGameState();
+
+    // 1. OKAMŽITĚ obnovit desku na HOSTITELI.
+    syncGameState(restoredState);
+
+    // 2. Poslat stejný obnovený stav všem ostatním hráčům.
+    // Používáme samostatný typ REJECT_RESULT, aby klient nemohl zaměnit
+    // návrat tahu za běžnou synchronizaci po novém tahu.
+    broadcast({
+      type: 'REJECT_RESULT',
+      state: restoredState
+    });
   }
 
   function nextTurn() {
