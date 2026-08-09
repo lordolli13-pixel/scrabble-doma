@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scrabble - Multiplayer</title>
-  <!-- Načtení knihovny PeerJS pro propojení zařízení zdarma -->
+  <!-- Načtení knihovny PeerJS pro propojení zařízení -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -164,10 +164,7 @@
       font-size: clamp(6px, 1.2cqw, 9px); 
       color: #555; 
     } 
-    #rack .tile .pts {
-      font-size: 10px;
-    }
-
+    #rack .tile .pts { font-size: 10px; }
     .tile.selected { outline: 3px solid var(--honey-main); box-shadow: 0 0 8px var(--honey-main); }
 
     .sidebar { 
@@ -200,19 +197,11 @@
     .controls button { width: 100%; font-size: 13px; padding: 10px; }
 
     .commentary-box {
-      margin-top: 10px;
-      padding: 10px;
-      background: var(--bg-antracit-dark);
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      font-size: 13px;
-      color: var(--honey-light);
-      font-style: italic;
-      min-height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
+      margin-top: 10px; padding: 10px;
+      background: var(--bg-antracit-dark); border: 1px solid var(--border-color);
+      border-radius: 4px; font-size: 13px; color: var(--honey-light);
+      font-style: italic; min-height: 48px; display: flex;
+      align-items: center; justify-content: center; text-align: center;
     }
   </style>
 </head>
@@ -221,7 +210,6 @@
   <!-- OBRAZOVKA PŘIPOJENÍ -->
   <div id="setup-screen">
     <h2>Scrabble Online</h2>
-    
     <div style="margin-bottom: 15px;">
       <label style="font-size: 12px; color: #9da5ac;">Tvoje jméno:</label>
       <input type="text" id="player-name-input" placeholder="Napiš své jméno" value="Hráč">
@@ -322,42 +310,14 @@
     ['W3','','','L2','','','','W3','','','','L2','','','W3']
   ];
 
-  const COMMENTARY_PLAY_HIGH = [
-    "🔥 {player} to tam nasázel jako profesionál! Parádních {pts} bodů!",
-    "🚀 Neskutečný tah! {player} získává {pts} bodů a soupeři jen tichým závistivým pohledem zírají.",
-    "💥 Boom! {player} předvedl mistrovské dílo za {pts} bodů!"
-  ];
-
-  const COMMENTARY_PLAY_MID = [
-    "👏 Solidní práce! {player} bere {pts} bodů.",
-    "🎯 Přesně takhle se to dělá. {player} zapisuje {pts} bodů.",
-    "Pěkné slovo! {player} si připisuje {pts} bodů."
-  ];
-
-  const COMMENTARY_PLAY_LOW = [
-    "🙂 Skromný, ale platný tah. {player} bere {pts} bodů.",
-    "Opatrný postup. {player} získává {pts} bodů.",
-    "Kvapem po troškách! {player} má za tento tah {pts} bodů."
-  ];
-
-  const COMMENTARY_SWAP = [
-    "🔄 {player} posílá neposlušné kameny zpět do pytlíku a doufá v zázrak!",
-    "🎲 {player} mění kameny. Snad z toho pytlíku vytáhne lepší konstelaci hvězd."
-  ];
-
-  const COMMENTARY_PASS = [
-    "😴 {player} takticky pasuje a dává prostor ostatním.",
-    "⏸️ {player} tentokrát vzdává boj bez boje a předává tah!"
-  ];
-
-  // SÍŤOVÉ PROMĚNNÉ
+  // SÍŤ
   let peer = null;
   let myId = null;
   let isHost = false;
   let hostConn = null; 
   let clientConns = []; 
 
-  // STAV HRY
+  // STAV
   let myName = "";
   let players = []; 
   let activePlayerIdx = 0;
@@ -365,16 +325,15 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!";
+  let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble!";
   
-  // ZÁLOHA PRO NEUZNÁNÍ TAHU (UCHOVÁVÁ HOST)
+  // ZÁLOHA PRO ZPĚTNÝ TAH
   let historyState = null;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
   }
 
-  /* ZALOŽENÍ HRY (HOST) */
   function createGame() {
     myName = document.getElementById('player-name-input').value.trim() || 'Zakladatel';
     isHost = true;
@@ -398,10 +357,9 @@
       conn.on('data', (data) => handleHostMessage(conn, data));
     });
 
-    peer.on('error', (err) => alert('Chyba při zakládání místnosti: ' + err.type));
+    peer.on('error', (err) => alert('Chyba při zakládání: ' + err.type));
   }
 
-  /* PŘIPOJENÍ KE HŘE (KLIENT) */
   function joinGame() {
     myName = document.getElementById('player-name-input').value.trim() || 'Hráč';
     const roomCode = document.getElementById('join-code-input').value.trim();
@@ -423,7 +381,7 @@
       hostConn.on('data', (data) => handleClientMessage(data));
     });
 
-    peer.on('error', () => alert('Kód místnosti nenalezen nebo hra neexistuje!'));
+    peer.on('error', () => alert('Kód místnosti nenalezen!'));
   }
 
   function shufflePlayers() {
@@ -441,18 +399,6 @@
     list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
   }
 
-  function setCommentary(msg) {
-    currentCommentary = msg;
-    const el = document.getElementById('commentary');
-    if (el) el.innerText = msg;
-  }
-
-  function getRandomPhrase(arr, player, pts = 0) {
-    const template = arr[Math.floor(Math.random() * arr.length)];
-    return template.replace('{player}', player).replace('{pts}', pts);
-  }
-
-  /* HOST ZPRÁVY */
   function handleHostMessage(conn, data) {
     if (data.type === 'JOIN') {
       players.push({ id: data.id, name: data.name, score: 0, rack: [] });
@@ -465,25 +411,15 @@
     if (data.type === 'REJECT_TURN') handleRejectTurnRequest();
   }
 
-  /* KLIENT ZPRÁVY */
   function handleClientMessage(data) {
     if (data.type === 'LOBBY_UPDATE') {
       players = data.players;
       updateLobbyUI();
     }
-    if (data.type === 'START_GAME') {
+    if (data.type === 'START_GAME' || data.type === 'SYNC_STATE') {
       syncGameState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
-      renderBoard();
-      updateUI();
-    }
-    if (data.type === 'SYNC_STATE') {
-      syncGameState(data.state);
-      uncommitted = [];
-      selectedRackIndices = [];
-      renderBoard();
-      updateUI();
     }
   }
 
@@ -506,13 +442,9 @@
 
     players.forEach(p => { p.rack = drawTiles(7); });
 
-    const state = getGameState();
-    broadcast({ type: 'START_GAME', state });
-
+    notifyHostOrBroadcast();
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
-    renderBoard();
-    updateUI();
   }
 
   function drawTiles(count) {
@@ -539,26 +471,27 @@
     activePlayerIdx = state.activePlayerIdx;
     tileBag = state.tileBag;
     boardState = state.boardState;
-    if (state.currentCommentary) setCommentary(state.currentCommentary);
+    currentCommentary = state.currentCommentary;
     
+    // NULOVÁNÍ LOKÁLNÍCH VÝBĚRŮ
+    uncommitted = [];
+    selectedRackIndices = [];
+
     const btnReject = document.getElementById('btn-reject');
-    if (btnReject) {
-      btnReject.disabled = !state.hasHistory;
-    }
+    if (btnReject) btnReject.disabled = !state.hasHistory;
+
+    renderBoard();
+    updateUI();
   }
 
   function notifyHostOrBroadcast() {
     const state = getGameState();
     if (isHost) {
       broadcast({ type: 'SYNC_STATE', state });
-      uncommitted = [];
-      selectedRackIndices = [];
-      renderBoard();
-      updateUI();
+      syncGameState(state);
     }
   }
 
-  /* RENDER HRACÍ DESKY (S DRAG & DROP) */
   function renderBoard() {
     const boardEl = document.getElementById('board');
     boardEl.innerHTML = '';
@@ -576,7 +509,6 @@
 
         cell.onclick = () => onCellClick(r, c);
 
-        // Drag & Drop
         cell.ondragover = (e) => {
           e.preventDefault();
           if (players[activePlayerIdx] && players[activePlayerIdx].id === myId && !boardState[r][c]) {
@@ -590,8 +522,7 @@
           if (!players[activePlayerIdx] || players[activePlayerIdx].id !== myId || boardState[r][c]) return;
           const rackIdxData = e.dataTransfer.getData('text/plain');
           if (rackIdxData !== '') {
-            const rackIdx = parseInt(rackIdxData, 10);
-            placeTileOnBoard(rackIdx, r, c);
+            placeTileOnBoard(parseInt(rackIdxData, 10), r, c);
           }
         };
 
@@ -634,7 +565,6 @@
     return players.find(p => p.id === myId);
   }
 
-  /* RENDER ZÁSOBNÍKU (S DRAG & DROP) */
   function renderRack() {
     const rackEl = document.getElementById('rack');
     rackEl.innerHTML = '';
@@ -695,16 +625,13 @@
   function placeTileOnBoard(rackIdx, r, c) {
     const p = getMyPlayer();
     const tile = p.rack[rackIdx];
-
     if (!tile) return;
 
     if (tile.isWildcard && !tile.assignedLetter) {
-      const input = prompt('Napište písmeno, které má žolík zastupovat:');
+      const input = prompt('Zadejte písmeno pro žolíka:');
       if (input && input.trim().length > 0) {
         tile.assignedLetter = input.trim().toUpperCase();
-      } else {
-        return;
-      }
+      } else return;
     }
 
     p.rack.splice(rackIdx, 1);
@@ -712,8 +639,7 @@
     uncommitted.push({ r, c, tile });
     selectedRackIndices = [];
 
-    const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
-    renderTileInCell(cellEl, r, c);
+    renderBoard();
     renderRack();
   }
 
@@ -731,7 +657,6 @@
     renderRack();
   }
 
-  /* POTVRZENÍ TAHU */
   function playTurn() {
     if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
 
@@ -821,25 +746,19 @@
     const currentPlayer = players[activePlayerIdx];
     currentPlayer.score += totalTurnScore;
 
-    if (totalTurnScore >= 20) {
-      setCommentary(getRandomPhrase(COMMENTARY_PLAY_HIGH, currentPlayer.name, totalTurnScore));
-    } else if (totalTurnScore >= 10) {
-      setCommentary(getRandomPhrase(COMMENTARY_PLAY_MID, currentPlayer.name, totalTurnScore));
-    } else {
-      setCommentary(getRandomPhrase(COMMENTARY_PLAY_LOW, currentPlayer.name, totalTurnScore));
-    }
-
+    // Doplnění kamenů do stojánku ze sáčku
     const drawn = drawTiles(uncommitted.length);
     currentPlayer.rack.push(...drawn);
+
+    currentCommentary = `🎯 ${currentPlayer.name} hraje za ${totalTurnScore} b.!`;
 
     nextTurn();
   }
 
-  /* VÝMĚNA */
   function swapSelectedTiles() {
-    if (uncommitted.length > 0) return alert('Nejdříve vraťte položeno z desky!');
-    if (selectedRackIndices.length === 0) return alert('Kliknutím vyberte kameny k výměně!');
-    if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dost kamenů!');
+    if (uncommitted.length > 0) return alert('Nejdříve vraťte kameny z desky!');
+    if (selectedRackIndices.length === 0) return alert('Označte kameny k výměně!');
+    if (tileBag.length < selectedRackIndices.length) return alert('Nedostatek kamenů v pytlíku!');
 
     if (isHost) {
       saveSnapshotBeforeTurn();
@@ -868,18 +787,15 @@
     tileBag.push(...tilesToReturn);
     tileBag.sort(() => Math.random() - 0.5);
 
-    setCommentary(getRandomPhrase(COMMENTARY_SWAP, p.name));
-
+    currentCommentary = `🔄 ${p.name} vyměnil svoje kameny.`;
     nextTurn();
   }
 
-  /* PASS */
   function passTurn() {
     recallTiles();
     if (isHost) {
       saveSnapshotBeforeTurn();
-      const p = players[activePlayerIdx];
-      setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
+      currentCommentary = `⏸️ ${players[activePlayerIdx].name} pasuje.`;
       nextTurn();
     } else {
       hostConn.send({ type: 'PASS_TURN' });
@@ -888,12 +804,11 @@
 
   function handleRemotePass() {
     saveSnapshotBeforeTurn();
-    const p = players[activePlayerIdx];
-    setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
+    currentCommentary = `⏸️ ${players[activePlayerIdx].name} pasuje.`;
     nextTurn();
   }
 
-  /* NEUZNÁNÍ TAHU (REJECT / CHALLENGE) */
+  /* NEUZNÁNÍ TAHU (REJECT / STORNO) */
   function rejectLastTurn() {
     if (isHost) {
       handleRejectTurnRequest();
@@ -905,19 +820,23 @@
   }
 
   function handleRejectTurnRequest() {
-    if (!historyState) return alert('Není k dispozici žádný předchozí tah k neuznání.');
+    if (!historyState) return alert('Žádný tah k neuznání!');
     
+    // Zjištění jména hráče, jehož tah stornujeme
     const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
 
+    // Kompletní obnova předchozího stavu
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx;
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
     boardState = JSON.parse(JSON.stringify(historyState.boardState));
     
-    setCommentary(`🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny i body byly vráceny.`);
+    currentCommentary = `🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny i body byly vráceny.`;
 
+    // Vymazání historii, aby nešlo stornovat vícekrát za sebou
     historyState = null;
 
+    // Distribuce nového (obnoveného) stavu všem hráčům
     notifyHostOrBroadcast();
   }
 
