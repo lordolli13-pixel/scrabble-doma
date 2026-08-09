@@ -832,10 +832,10 @@
   function handleRejectTurnRequest() {
     if (!historyState) return alert('Žádný tah k neuznání!');
     
+    // Obnovení celého stavu ze snapshotu před tahem (vrátí hráče, skóre, kameny, pytlík i desku)
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx; 
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
-    boardState = JSON.parse(JSON.stringify(boardState)); // zachová desku předtím
     boardState = JSON.parse(JSON.stringify(historyState.boardState)); 
     
     currentCommentary = `🚫 Tah byl neuznán! Kameny i body se vrátily.`;
