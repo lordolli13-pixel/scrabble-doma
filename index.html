@@ -70,7 +70,6 @@
       border-radius: 6px; border: 1px dashed var(--border-color);
     }
 
-    /* PLNOU RESPONZIVITU ZAJIŠŤUJE DYNAMICKÝ LAYOUT */
     #game-screen { 
       display: none; 
       width: 100%; 
@@ -86,7 +85,6 @@
       align-items: center;
     }
 
-    /* Na PC rozložit na dva sloupce */
     @media (min-width: 900px) {
       .layout {
         flex-direction: row;
@@ -220,7 +218,7 @@
 </head>
 <body>
 
-  <!-- OBRAZOVKA PŘIPOJENÍ NA ZAČÁTKU -->
+  <!-- OBRAZOVKA PŘIPOJENÍ -->
   <div id="setup-screen">
     <h2>Scrabble Online</h2>
     
@@ -540,8 +538,11 @@
     tileBag = state.tileBag;
     boardState = state.boardState;
     if (state.currentCommentary) setCommentary(state.currentCommentary);
-    if (state.hasHistory !== undefined) {
-      document.getElementById('btn-reject').disabled = !state.hasHistory;
+    
+    // Zapnutí nebo vypnutí tlačítka Neuznat tah podle historie
+    const btnReject = document.getElementById('btn-reject');
+    if (btnReject) {
+      btnReject.disabled = !state.hasHistory;
     }
   }
 
@@ -574,7 +575,7 @@
 
         cell.onclick = () => onCellClick(r, c);
 
-        // Umožnění položení kamene přes Drag & Drop
+        // Drag & Drop
         cell.ondragover = (e) => {
           e.preventDefault();
           if (players[activePlayerIdx].id === myId && !boardState[r][c]) {
@@ -609,7 +610,6 @@
     document.getElementById('btn-swap').disabled = !myTurn;
     document.getElementById('btn-recall').disabled = !myTurn;
     document.getElementById('btn-pass').disabled = !myTurn;
-    document.getElementById('btn-reject').disabled = !historyState;
 
     const sb = document.getElementById('scoreboard');
     sb.innerHTML = '';
@@ -650,7 +650,6 @@
 
       if (selectedRackIndices.includes(idx)) tileEl.classList.add('selected');
 
-      // Drag & Drop z nastavení
       if (isMyTurn) {
         tileEl.draggable = true;
         tileEl.ondragstart = (e) => {
@@ -894,17 +893,17 @@
 
   /* NEUZNÁNÍ TAHU (REJECT / CHALLENGE) */
   function rejectLastTurn() {
-    if (!historyState) return alert('Není k dispozici žádný předchozí tah k neuznání.');
-
     if (isHost) {
       handleRejectTurnRequest();
     } else {
-      hostConn.send({ type: 'REJECT_TURN' });
+      if (hostConn && hostConn.open) {
+        hostConn.send({ type: 'REJECT_TURN' });
+      }
     }
   }
 
   function handleRejectTurnRequest() {
-    if (!historyState) return;
+    if (!historyState) return alert('Není k dispozici žádný předchozí tah k neuznání.');
     
     const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
 
