@@ -655,21 +655,31 @@
   function playTurn() {
     if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
 
+    const myPlayer = getMyPlayer();
+    const currentRackState = JSON.parse(JSON.stringify(myPlayer.rack));
+    const uncommittedCopy = JSON.parse(JSON.stringify(uncommitted));
+    const boardStateCopy = JSON.parse(JSON.stringify(boardState));
+
     if (isHost) {
       saveSnapshotBeforeTurn();
-      processTurnLogic();
+      processTurnLogic(activePlayerIdx, uncommittedCopy, boardStateCopy, currentRackState);
     } else {
-      hostConn.send({ type: 'PLAY_TURN', uncommitted, boardState, rack: getMyPlayer().rack });
+      hostConn.send({ 
+        type: 'PLAY_TURN', 
+        uncommitted: uncommittedCopy, 
+        boardState: boardStateCopy, 
+        rack: currentRackState 
+      });
     }
   }
 
   function handleRemoteTurn(data) {
     saveSnapshotBeforeTurn();
-    const player = players[activePlayerIdx];
-    player.rack = data.rack;
+    const targetPlayerIdx = activePlayerIdx; 
+    players[targetPlayerIdx].rack = data.rack;
     uncommitted = data.uncommitted;
     boardState = data.boardState;
-    processTurnLogic();
+    processTurnLogic(targetPlayerIdx, data.uncommitted, data.boardState, data.rack);
   }
 
   function saveSnapshotBeforeTurn() {
@@ -682,17 +692,17 @@
     };
   }
 
-  function processTurnLogic() {
+  function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
     let totalTurnScore = 0;
 
     function calculateWordScore(startR, startC, isHorizontal) {
       let r = startR, c = startC, wordScore = 0, wordMultiplier = 1, wordLength = 0;
-      while (r >= 0 && r < 15 && c >= 0 && c < 15 && boardState[r][c] !== null) {
+      while (r >= 0 && r < 15 && c >= 0 && c < 15 && currentBoardState[r][c] !== null) {
         wordLength++;
-        let tile = boardState[r][c];
+        let tile = currentBoardState[r][c];
         let tilePts = tile.pts;
 
-        if (uncommitted.some(u => u.r === r && u.c === c)) {
+        if (turnUncommitted.some(u => u.r === r && u.c === c)) {
           let type = LAYOUT[r][c];
           if (type === 'L2') tilePts *= 2;
           if (type === 'L3') tilePts *= 3;
@@ -705,46 +715,51 @@
       return wordLength > 1 ? (wordScore * wordMultiplier) : 0;
     }
 
-    let rows = uncommitted.map(u => u.r);
-    let cols = uncommitted.map(u => u.c);
+    let rows = turnUncommitted.map(u => u.r);
+    let cols = turnUncommitted.map(u => u.c);
     let isHorizontal = rows.every(r => r === rows[0]);
 
-    if (uncommitted.length === 1) {
-      let r = uncommitted[0].r, c = uncommitted[0].c;
-      let startC = c; while (startC > 0 && boardState[r][startC - 1] !== null) startC--;
+    if (turnUncommitted.length === 1) {
+      let r = turnUncommitted[0].r, c = turnUncommitted[0].c;
+      let startC = c; while (startC > 0 && currentBoardState[r][startC - 1] !== null) startC--;
       totalTurnScore += calculateWordScore(r, startC, true);
 
-      let startR = r; while (startR > 0 && boardState[startR - 1][c] !== null) startR--;
+      let startR = r; while (startR > 0 && currentBoardState[startR - 1][c] !== null) startR--;
       totalTurnScore += calculateWordScore(startR, c, false);
     } else {
       if (isHorizontal) {
         let r = rows[0], startC = Math.min(...cols);
-        while (startC > 0 && boardState[r][startC - 1] !== null) startC--;
+        while (startC > 0 && currentBoardState[r][startC - 1] !== null) startC--;
         totalTurnScore += calculateWordScore(r, startC, true);
-        uncommitted.forEach(u => {
-          let startR = u.r; while (startR > 0 && boardState[startR - 1][u.c] !== null) startR--;
+        turnUncommitted.forEach(u => {
+          let startR = u.r; while (startR > 0 && currentBoardState[startR - 1][u.c] !== null) startR--;
           totalTurnScore += calculateWordScore(startR, u.c, false);
         });
       } else {
         let c = cols[0], startR = Math.min(...rows);
-        while (startR > 0 && boardState[startR - 1][c] !== null) startR--;
+        while (startR > 0 && currentBoardState[startR - 1][c] !== null) startR--;
         totalTurnScore += calculateWordScore(startR, c, false);
-        uncommitted.forEach(u => {
-          let startC = u.c; while (startC > 0 && boardState[u.r][startC - 1] !== null) startC--;
+        turnUncommitted.forEach(u => {
+          let startC = u.c; while (startC > 0 && currentBoardState[u.r][startC - 1] !== null) startC--;
           totalTurnScore += calculateWordScore(u.r, startC, true);
         });
       }
     }
 
-    if (uncommitted.length === 7) totalTurnScore += 50;
+    if (turnUncommitted.length === 7) totalTurnScore += 50;
 
-    const currentPlayer = players[activePlayerIdx];
+    const currentPlayer = players[playerIdx];
     currentPlayer.score += totalTurnScore;
+    currentPlayer.rack = playerRack;
 
-    const drawn = drawTiles(uncommitted.length);
-    currentPlayer.rack.push(...drawn);
+    const neededCount = 7 - currentPlayer.rack.length;
+    if (neededCount > 0) {
+      const drawn = drawTiles(neededCount);
+      currentPlayer.rack.push(...drawn);
+    }
 
     currentCommentary = `🎯 ${currentPlayer.name} hraje za ${totalTurnScore} b.!`;
+    uncommitted = [];
 
     nextTurn();
   }
@@ -815,9 +830,8 @@
   function handleRejectTurnRequest() {
     if (!historyState) return alert('Žádný tah k neuznání!');
     
-    // Obnovíme kompletní předchozí stav (deska, skóre, pytlík)
     players = JSON.parse(JSON.stringify(historyState.players));
-    activePlayerIdx = historyState.activePlayerIdx; // Vracíme tah přesně tomu hráči, který jej udělal
+    activePlayerIdx = historyState.activePlayerIdx; 
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
     boardState = JSON.parse(JSON.stringify(historyState.boardState));
     
