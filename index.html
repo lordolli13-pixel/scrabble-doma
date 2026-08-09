@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer</title>
+  <title>Scrabble - Multiplayer v3</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -412,8 +412,19 @@
     if (data.type === 'LOBBY_UPDATE') {
       players = data.players;
       updateLobbyUI();
+      return;
     }
-    if (data.type === 'START_GAME' || data.type === 'SYNC_STATE' || data.type === 'REJECT_RESULT') {
+
+    if (data.type === 'REJECT_RESULT') {
+      // NEUZNANÝ TAH: na klientovi uděláme tvrdou obnovu celé hry.
+      // Nesmí zůstat ani jeden starý element s kamenem v DOM.
+      forceApplyRemoteState(data.state);
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'flex';
+      return;
+    }
+
+    if (data.type === 'START_GAME' || data.type === 'SYNC_STATE') {
       syncGameState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
@@ -461,6 +472,41 @@
       currentCommentary,
       hasHistory: !!historyState
     };
+  }
+
+  function forceApplyRemoteState(state) {
+    if (!state) return;
+
+    // 1. Zastavit a zahodit lokální rozpracovaný tah.
+    uncommitted = [];
+    selectedRackIndices = [];
+    historyState = null;
+    historyPlayerIdx = null;
+
+    // 2. Přepsat data hlubokou kopií.
+    players = JSON.parse(JSON.stringify(state.players || []));
+    activePlayerIdx = Number.isInteger(state.activePlayerIdx) ? state.activePlayerIdx : 0;
+    tileBag = JSON.parse(JSON.stringify(state.tileBag || []));
+    boardState = JSON.parse(JSON.stringify(state.boardState || Array(15).fill(null).map(() => Array(15).fill(null))));
+    currentCommentary = state.currentCommentary || '';
+
+    // 3. Fyzicky odstranit starou desku a vytvořit úplně nový DOM element.
+    // Tím se vyloučí možnost, že staré kameny zůstanou viset v prohlížeči.
+    const oldBoard = document.getElementById('board');
+    if (oldBoard) {
+      const newBoard = oldBoard.cloneNode(false);
+      oldBoard.parentNode.replaceChild(newBoard, oldBoard);
+    }
+
+    // 4. Vykreslit výhradně z obnoveného boardState.
+    renderBoard();
+    updateUI();
+
+    // 5. Ještě jeden repaint pro mobilní/prohlížečové DOM cache.
+    requestAnimationFrame(() => {
+      renderBoard();
+      updateUI();
+    });
   }
 
   function syncGameState(state) {
@@ -888,15 +934,23 @@
 
     const restoredState = getGameState();
 
-    // 1. OKAMŽITĚ obnovit desku na HOSTITELI.
+    // 1. OKAMŽITĚ obnovit stav na HOSTITELI.
     syncGameState(restoredState);
 
-    // 2. Poslat stejný obnovený stav všem ostatním hráčům.
-    // Používáme samostatný typ REJECT_RESULT, aby klient nemohl zaměnit
-    // návrat tahu za běžnou synchronizaci po novém tahu.
-    broadcast({
+    // 2. Poslat obnovený stav KAŽDÉMU klientovi samostatně.
+    // Nepoužíváme jen obecný SYNC_STATE, protože klient musí vědět,
+    // že jde o návrat po NEUZNÁNÍ a má udělat tvrdý reset desky.
+    const rejectMessage = {
       type: 'REJECT_RESULT',
-      state: restoredState
+      state: JSON.parse(JSON.stringify(restoredState)),
+      rejectedPlayerIdx: rejectedPlayerIdx,
+      timestamp: Date.now()
+    };
+
+    clientConns.forEach(conn => {
+      if (conn && conn.open) {
+        try { conn.send(rejectMessage); } catch (e) { console.warn('REJECT_RESULT send:', e); }
+      }
     });
   }
 
