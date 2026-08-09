@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scrabble - Multiplayer</title>
+  <!-- Načtení knihovny PeerJS pro propojení zařízení zdarma -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg-antracit-dark: #121416;
+      --bg-antracit-panel: #1a1d20;
+      --board-grid: #24292e;
+      --cell-default: #3a3f44;
+      --border-color: #4a5056;
+      --cell-2l: #4a90e2; 
+      --cell-3l: #155799; 
+      --cell-2w: #f39c12; 
+      --cell-3w: #c0392b; 
+      --honey-main: #d4a359;
+      --honey-light: #f3e5ab;
+      --tile-bg: linear-gradient(135deg, #ffffff 0%, #eaeaea 100%);
+      --tile-text: #000000;
+      --tile-border: #cccccc;
+      --tile-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 1px 0 #ffffff;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
+    
+    body { 
+      background: var(--bg-antracit-dark); 
+      color: var(--honey-light); 
+      padding: 15px; 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      min-height: 100vh;
+    }
+
+    #setup-screen { 
+      background: var(--bg-antracit-panel); 
+      padding: 25px; 
+      border-radius: 8px; 
+      max-width: 400px; 
+      width: 100%; 
+      text-align: center; 
+      border: 1px solid var(--border-color);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.8);
+    }
+    #setup-screen h2 { font-size: 24px; margin-bottom: 15px; color: var(--honey-light); }
+    #setup-screen input { 
+      width: 100%; padding: 10px; margin: 6px 0 12px 0; 
+      border-radius: 4px; border: 1px solid var(--border-color); 
+      background: var(--bg-antracit-dark); color: #ffffff; font-size: 15px; text-align: center;
+    }
+    
+    button { 
+      background: linear-gradient(to bottom, #d4a359, #b07d35); 
+      border: 1px solid #7d541e; padding: 10px 16px; 
+      color: #121416; font-weight: bold; border-radius: 4px; 
+      cursor: pointer; transition: all 0.2s; 
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    }
+    button:hover { background: linear-gradient(to bottom, #e2b268, #c48e42); }
+
+    .lobby-box {
+      margin-top: 15px; padding: 12px; background: var(--bg-antracit-dark);
+      border-radius: 6px; border: 1px dashed var(--border-color);
+    }
+
+    #game-screen { display: none; gap: 20px; max-width: 1050px; width: 100%; }
+    .layout { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; }
+
+    #board-frame {
+      background: var(--bg-antracit-panel);
+      padding: 10px; border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+      border: 1px solid var(--border-color);
+    }
+
+    #board { 
+      display: grid; 
+      grid-template-columns: repeat(15, 1fr); 
+      gap: 2px; 
+      background: var(--board-grid); 
+      padding: 4px; 
+      border-radius: 4px; 
+      width: 100%; max-width: 520px; height: auto; aspect-ratio: 1/1;
+    }
+    
+    .cell { 
+      background: var(--cell-default); 
+      display: flex; align-items: center; justify-content: center; 
+      font-size: 10px; font-weight: 800; border-radius: 2px; 
+      position: relative; user-select: none; color: #ffffff; overflow: hidden;
+    }
+    
+    .cell.drag-over { background: var(--honey-main) !important; color: #121416; }
+    .cell.L2 { background: var(--cell-2l); } 
+    .cell.L3 { background: var(--cell-3l); } 
+    .cell.W2 { background: var(--cell-2w); } 
+    .cell.W3 { background: var(--cell-3w); } 
+    .cell.STAR { background: var(--cell-2w); font-size: 13px; }
+
+    .tile { 
+      background: var(--tile-bg); color: var(--tile-text); 
+      width: 100%; height: 100%; border-radius: 3px; 
+      display: flex; align-items: center; justify-content: center; 
+      font-weight: 900; font-size: 18px; font-family: 'Arial Black', sans-serif;
+      position: relative; cursor: grab; border: 1px solid var(--tile-border);
+      box-shadow: var(--tile-shadow); user-select: none;
+    }
+    
+    #rack .tile { width: 38px; height: 38px; font-size: 20px; border-radius: 4px; }
+    .tile .pts { position: absolute; bottom: 1.5px; right: 2px; font-size: 6.5px; color: #666; } 
+    .tile.selected { outline: 3px solid var(--honey-main); box-shadow: 0 0 8px var(--honey-main); }
+
+    .sidebar { display: flex; flex-direction: column; gap: 15px; width: 280px; }
+    .panel { 
+      background: var(--bg-antracit-panel); padding: 15px; 
+      border-radius: 8px; border: 1px solid var(--border-color);
+    }
+    .panel h3 { font-size: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; color: var(--honey-light); }
+    
+    .player-row { 
+      display: flex; justify-content: space-between; padding: 8px; 
+      border-radius: 4px; margin-bottom: 4px; background: var(--bg-antracit-dark); color: #9da5ac; font-size: 14px;
+    }
+    .player-row.active { border: 1px solid var(--honey-main); background: #272c30; color: #ffffff; }
+
+    .rack-container {
+      background: var(--bg-antracit-dark); padding: 8px; 
+      border-radius: 6px; border: 1px solid var(--border-color); margin-top: 5px;
+    }
+    #rack { display: flex; gap: 6px; min-height: 42px; align-items: center; justify-content: center; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+    .controls button { width: 100%; font-size: 13px; padding: 8px; }
+  </style>
+</head>
+<body>
+
+  <!-- OBRAZOVKA PŘIPOJENÍ NA ZAČÁTKU -->
+  <div id="setup-screen">
+    <h2>Scrabble Online</h2>
+    
+    <div style="margin-bottom: 15px;">
+      <label style="font-size: 12px; color: #9da5ac;">Tvoje jméno:</label>
+      <input type="text" id="player-name-input" placeholder="Napiš své jméno" value="Hráč">
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <button onclick="createGame()" style="flex:1;">Založit hru</button>
+    </div>
+
+    <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
+      <label style="font-size: 12px; color: #9da5ac;">Máš kód od zakladatele?</label>
+      <input type="text" id="join-code-input" placeholder="Vlož Kód místnosti">
+      <button onclick="joinGame()" style="width: 100%; background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Připojit se ke hře</button>
+    </div>
+
+    <div id="lobby-info" class="lobby-box" style="display: none;">
+      <p style="font-size: 12px; color: #9da5ac;">KÓD MÍSTNOSTI PRO OSTATNÍ:</p>
+      <h1 id="room-code-display" style="color: var(--honey-main); letter-spacing: 3px; margin: 5px 0;">----</h1>
+      <p style="font-size: 12px; color: #9da5ac; margin-top: 8px;">Připojení hráči:</p>
+      <ul id="connected-players-list" style="list-style: none; margin: 5px 0; font-weight: bold;"></ul>
+      <button id="start-btn" onclick="hostStartGame()" style="margin-top: 10px; display: none; width: 100%;">Odstartovat hru!</button>
+    </div>
+  </div>
+
+  <!-- HERNÍ OBRAZOVKA -->
+  <div id="game-screen">
+    <div class="layout">
+      <div id="board-frame">
+        <div id="board"></div>
+      </div>
+
+      <div class="sidebar">
+        <div class="panel">
+          <h3>Skóre</h3>
+          <div id="scoreboard"></div>
+          <p style="margin-top: 8px; font-size: 12px; color: #9da5ac;">Kamenů v pytlíku: <strong id="bag-count" style="color:var(--honey-light);">0</strong></p>
+        </div>
+
+        <div class="panel">
+          <h3 id="current-player-title">Na tahu: -</h3>
+          <p style="font-size: 11px; color: #9da5ac; margin-bottom: 4px;">Moje kameny:</p>
+          
+          <div class="rack-container">
+            <div id="rack"></div>
+          </div>
+          
+          <div class="controls">
+            <button id="btn-play" onclick="playTurn()">Potvrdit</button>
+            <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
+            <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
+            <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Pass</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const CZECH_TILES = [
+    { l: '★', p: 0, c: 2, isWildcard: true },
+    { l: 'A', p: 1, c: 5 }, { l: 'Á', p: 2, c: 2 }, { l: 'B', p: 3, c: 2 }, 
+    { l: 'C', p: 2, c: 3 }, { l: 'Č', p: 4, c: 1 }, { l: 'D', p: 1, c: 3 }, 
+    { l: 'Ď', p: 8, c: 1 }, { l: 'E', p: 1, c: 5 }, { l: 'É', p: 3, c: 1 }, 
+    { l: 'Ě', p: 3, c: 2 }, { l: 'F', p: 5, c: 1 }, { l: 'G', p: 5, c: 1 }, 
+    { l: 'H', p: 2, c: 3 }, { l: 'CH', p: 4, c: 2 }, { l: 'I', p: 1, c: 4 }, 
+    { l: 'Í', p: 2, c: 3 }, { l: 'J', p: 2, c: 2 }, { l: 'K', p: 1, c: 3 }, 
+    { l: 'L', p: 1, c: 3 }, { l: 'M', p: 2, c: 3 }, { l: 'N', p: 1, c: 5 }, 
+    { l: 'Ň', p: 10, c: 1 }, { l: 'O', p: 1, c: 6 }, { l: 'Ó', p: 7, c: 1 }, 
+    { l: 'P', p: 1, c: 3 }, { l: 'R', p: 1, c: 3 }, { l: 'Ř', p: 4, c: 2 }, 
+    { l: 'S', p: 1, c: 4 }, { l: 'Š', p: 4, c: 2 }, { l: 'T', p: 1, c: 4 }, 
+    { l: 'Ť', p: 7, c: 1 }, { l: 'U', p: 1, c: 3 }, { l: 'Ú', p: 5, c: 1 }, 
+    { l: 'Ů', p: 4, c: 1 }, { l: 'V', p: 1, c: 4 }, { l: 'X', p: 10, c: 1 }, 
+    { l: 'Y', p: 2, c: 2 }, { l: 'Ý', p: 4, c: 2 }, { l: 'Z', p: 2, c: 2 }, 
+    { l: 'Ž', p: 4, c: 1 }
+  ];
+
+  const LAYOUT = [
+    ['W3','','','L2','','','','W3','','','','L2','','','W3'],
+    ['','W2','','','','L3','','','','L3','','','','W2',''],
+    ['','','W2','','','','L2','','L2','','','','W2','',''],
+    ['L2','','','W2','','','','L2','','','','W2','','','L2'],
+    ['','','','','W2','','','','','','W2','','','',''],
+    ['','L3','','','','L3','','','','L3','','','','L3',''],
+    ['','','L2','','','','L2','','L2','','','','L2','',''],
+    ['W3','','','L2','','','','STAR','','','','L2','','','W3'],
+    ['','','L2','','','','L2','','L2','','','','L2','',''],
+    ['','L3','','','','L3','','','','L3','','','','L3',''],
+    ['','','','','W2','','','','','','W2','','','',''],
+    ['L2','','','W2','','','','L2','','','','W2','','','L2'],
+    ['','','W2','','','','L2','','L2','','','','W2','',''],
+    ['','W2','','','','L3','','','','L3','','','','W2',''],
+    ['W3','','','L2','','','','W3','','','','L2','','','W3']
+  ];
+
+  // SÍŤOVÉ PROMĚNNÉ
+  let peer = null;
+  let myId = null;
+  let isHost = false;
+  let hostConn = null; 
+  let clientConns = []; 
+
+  // STAV HRY
+  let myName = "";
+  let players = []; 
+  let activePlayerIdx = 0;
+  let tileBag = [];
+  let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
+  let uncommitted = [];
+  let selectedRackIndices = [];
+
+  function generateRoomCode() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  }
+
+  /* ZALOŽENÍ HRY (HOST) */
+  function createGame() {
+    myName = document.getElementById('player-name-input').value.trim() || 'Zakladatel';
+    isHost = true;
+    const roomCode = generateRoomCode();
+
+    peer = new Peer('scrabble-room-' + roomCode);
+
+    peer.on('open', (id) => {
+      myId = id;
+      document.getElementById('lobby-info').style.display = 'block';
+      document.getElementById('room-code-display').innerText = roomCode;
+      document.getElementById('start-btn').style.display = 'block';
+      
+      players.push({ id: myId, name: myName, score: 0, rack: [] });
+      updateLobbyUI();
+    });
+
+    peer.on('connection', (conn) => {
+      clientConns.push(conn);
+      conn.on('data', (data) => handleHostMessage(conn, data));
+    });
+
+    peer.on('error', (err) => alert('Chyba při zakládání místnosti: ' + err.type));
+  }
+
+  /* PŘIPOJENÍ KE HŘE (KLIENT) */
+  function joinGame() {
+    myName = document.getElementById('player-name-input').value.trim() || 'Hráč';
+    const roomCode = document.getElementById('join-code-input').value.trim();
+    if (!roomCode) return alert('Zadejte kód místnosti!');
+
+    isHost = false;
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+      myId = id;
+      hostConn = peer.connect('scrabble-room-' + roomCode);
+
+      hostConn.on('open', () => {
+        hostConn.send({ type: 'JOIN', name: myName, id: myId });
+        document.getElementById('lobby-info').style.display = 'block';
+        document.getElementById('room-code-display').innerText = roomCode;
+      });
+
+      hostConn.on('data', (data) => handleClientMessage(data));
+    });
+
+    peer.on('error', () => alert('Kód místnosti nenalezen nebo hra neexistuje!'));
+  }
+
+  function updateLobbyUI() {
+    const list = document.getElementById('connected-players-list');
+    list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
+  }
+
+  /* HOST ZPRÁVY */
+  function handleHostMessage(conn, data) {
+    if (data.type === 'JOIN') {
+      players.push({ id: data.id, name: data.name, score: 0, rack: [] });
+      updateLobbyUI();
+      broadcast({ type: 'LOBBY_UPDATE', players });
+    }
+    if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
+    if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
+    if (data.type === 'PASS_TURN') handleRemotePass();
+  }
+
+  /* KLIENT ZPRÁVY */
+  function handleClientMessage(data) {
+    if (data.type === 'LOBBY_UPDATE') {
+      players = data.players;
+      updateLobbyUI();
+    }
+    if (data.type === 'START_GAME') {
+      syncGameState(data.state);
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'flex';
+      renderBoard();
+      updateUI();
+    }
+    if (data.type === 'SYNC_STATE') {
+      syncGameState(data.state);
+      uncommitted = [];
+      selectedRackIndices = [];
+      renderBoard();
+      updateUI();
+    }
+  }
+
+  function broadcast(data) {
+    clientConns.forEach(c => c.send(data));
+  }
+
+  function hostStartGame() {
+    if (players.length < 2) return alert('K hraní jsou potřeba alespoň 2 hráči!');
+
+    // Inicializace pytlíku
+    tileBag = [];
+    CZECH_TILES.forEach(item => {
+      for (let i = 0; i < item.c; i++) {
+        tileBag.push({ letter: item.l, pts: item.p, isWildcard: !!item.isWildcard, assignedLetter: null });
+      }
+    });
+    tileBag.sort(() => Math.random() - 0.5);
+
+    // Rozdání kamenů
+    players.forEach(p => { p.rack = drawTiles(7); });
+
+    const state = getGameState();
+    broadcast({ type: 'START_GAME', state });
+
+    document.getElementById('setup-screen').style.display = 'none';
+    document.getElementById('game-screen').style.display = 'flex';
+    renderBoard();
+    updateUI();
+  }
+
+  function drawTiles(count) {
+    const drawn = [];
+    for (let i = 0; i < count && tileBag.length > 0; i++) {
+      drawn.push(tileBag.pop());
+    }
+    return drawn;
+  }
+
+  function getGameState() {
+    return {
+      players,
+      activePlayerIdx,
+      tileBag,
+      boardState
+    };
+  }
+
+  function syncGameState(state) {
+    players = state.players;
+    activePlayerIdx = state.activePlayerIdx;
+    tileBag = state.tileBag;
+    boardState = state.boardState;
+  }
+
+  function notifyHostOrBroadcast() {
+    const state = getGameState();
+    if (isHost) {
+      broadcast({ type: 'SYNC_STATE', state });
+      uncommitted = [];
+      selectedRackIndices = [];
+      renderBoard();
+      updateUI();
+    } else {
+      // Pokud jsem klient, posílám tahu hostovi k vyhodnocení
+    }
+  }
+
+  /* LOGIKA HRY */
+  function renderBoard() {
+    const boardEl = document.getElementById('board');
+    boardEl.innerHTML = '';
+    for (let r = 0; r < 15; r++) {
+      for (let c = 0; c < 15; c++) {
+        const cell = document.createElement('div');
+        const type = LAYOUT[r][c];
+        cell.className = `cell ${type}`;
+        cell.dataset.r = r; cell.dataset.c = c;
+        if (!boardState[r][c]) {
+          if (type === 'L2' || type === 'W2') cell.innerText = '2x';
+          if (type === 'L3' || type === 'W3') cell.innerText = '3x';
+          if (type === 'STAR') cell.innerText = '★';
+        }
+
+        cell.onclick = () => onCellClick(r, c);
+        boardEl.appendChild(cell);
+
+        if (boardState[r][c]) {
+          renderTileInCell(cell, r, c);
+        }
+      }
+    }
+  }
+
+  function updateUI() {
+    const myTurn = players[activePlayerIdx] && players[activePlayerIdx].id === myId;
+    
+    // Zpřístupnění tlačítek pouze hráči na tahu
+    document.getElementById('btn-play').disabled = !myTurn;
+    document.getElementById('btn-swap').disabled = !myTurn;
+    document.getElementById('btn-recall').disabled = !myTurn;
+    document.getElementById('btn-pass').disabled = !myTurn;
+
+    const sb = document.getElementById('scoreboard');
+    sb.innerHTML = '';
+    players.forEach((p, idx) => {
+      const div = document.createElement('div');
+      div.className = `player-row ${idx === activePlayerIdx ? 'active' : ''}`;
+      div.innerHTML = `<span>${p.name} ${p.id === myId ? '(Ty)' : ''}</span><strong>${p.score} b.</strong>`;
+      sb.appendChild(div);
+    });
+
+    document.getElementById('bag-count').innerText = tileBag.length;
+    document.getElementById('current-player-title').innerText = `Na tahu: ${players[activePlayerIdx] ? players[activePlayerIdx].name : '-'}`;
+
+    renderRack();
+  }
+
+  function getMyPlayer() {
+    return players.find(p => p.id === myId);
+  }
+
+  function renderRack() {
+    const rackEl = document.getElementById('rack');
+    rackEl.innerHTML = '';
+    const myPlayer = getMyPlayer();
+    if (!myPlayer) return;
+
+    myPlayer.rack.forEach((tile, idx) => {
+      const tileEl = document.createElement('div');
+      tileEl.className = 'tile';
+      const displayLetter = tile.isWildcard && tile.assignedLetter ? tile.assignedLetter : tile.letter;
+      tileEl.innerHTML = `${displayLetter}<span class="pts">${tile.pts}</span>`;
+
+      if (selectedRackIndices.includes(idx)) tileEl.classList.add('selected');
+
+      tileEl.onclick = () => {
+        if (players[activePlayerIdx].id !== myId) return; // Pouze na vlastním tahu
+        if (selectedRackIndices.includes(idx)) {
+          selectedRackIndices = selectedRackIndices.filter(i => i !== idx);
+        } else {
+          selectedRackIndices.push(idx);
+        }
+        renderRack();
+      };
+
+      rackEl.appendChild(tileEl);
+    });
+  }
+
+  function renderTileInCell(cellEl, r, c) {
+    cellEl.innerHTML = '';
+    const tile = boardState[r][c];
+    if (!tile) return;
+
+    const tileEl = document.createElement('div');
+    tileEl.className = 'tile';
+    const displayLetter = tile.isWildcard && tile.assignedLetter ? tile.assignedLetter : tile.letter;
+    tileEl.innerHTML = `${displayLetter}<span class="pts">${tile.pts}</span>`;
+    cellEl.appendChild(tileEl);
+  }
+
+  function onCellClick(r, c) {
+    if (players[activePlayerIdx].id !== myId) return; // Pouze na vlastním tahu
+    if (selectedRackIndices.length === 1 && !boardState[r][c]) {
+      placeTileOnBoard(selectedRackIndices[0], r, c);
+    }
+  }
+
+  function placeTileOnBoard(rackIdx, r, c) {
+    const p = getMyPlayer();
+    const tile = p.rack[rackIdx];
+
+    if (tile.isWildcard && !tile.assignedLetter) {
+      const input = prompt('Napište písmeno, které má žolík zastupovat:');
+      if (input && input.trim().length > 0) {
+        tile.assignedLetter = input.trim().toUpperCase();
+      } else {
+        return;
+      }
+    }
+
+    p.rack.splice(rackIdx, 1);
+    boardState[r][c] = tile;
+    uncommitted.push({ r, c, tile });
+    selectedRackIndices = [];
+
+    const cellEl = document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
+    renderTileInCell(cellEl, r, c);
+    renderRack();
+  }
+
+  function recallTiles() {
+    const p = getMyPlayer();
+    uncommitted.forEach(u => {
+      if (u.tile.isWildcard) u.tile.assignedLetter = null;
+      boardState[u.r][u.c] = null;
+      p.rack.push(u.tile);
+    });
+    uncommitted = [];
+    selectedRackIndices = [];
+    renderBoard();
+    renderRack();
+  }
+
+  /* POTVRZENÍ TAHU */
+  function playTurn() {
+    if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
+
+    if (isHost) {
+      processTurnLogic();
+    } else {
+      hostConn.send({ type: 'PLAY_TURN', uncommitted, boardState, rack: getMyPlayer().rack });
+    }
+  }
+
+  function handleRemoteTurn(data) {
+    // Aplikace tahu od klienta na hostovi
+    const player = players[activePlayerIdx];
+    player.rack = data.rack;
+    uncommitted = data.uncommitted;
+    boardState = data.boardState;
+    processTurnLogic();
+  }
+
+  function processTurnLogic() {
+    let totalTurnScore = 0;
+
+    function calculateWordScore(startR, startC, isHorizontal) {
+      let r = startR, c = startC, wordScore = 0, wordMultiplier = 1, wordLength = 0;
+      while (r >= 0 && r < 15 && c >= 0 && c < 15 && boardState[r][c] !== null) {
+        wordLength++;
+        let tile = boardState[r][c];
+        let tilePts = tile.pts;
+
+        if (uncommitted.some(u => u.r === r && u.c === c)) {
+          let type = LAYOUT[r][c];
+          if (type === 'L2') tilePts *= 2;
+          if (type === 'L3') tilePts *= 3;
+          if (type === 'W2' || type === 'STAR') wordMultiplier *= 2;
+          if (type === 'W3') wordMultiplier *= 3;
+        }
+        wordScore += tilePts;
+        if (isHorizontal) c++; else r++;
+      }
+      return wordLength > 1 ? (wordScore * wordMultiplier) : 0;
+    }
+
+    let rows = uncommitted.map(u => u.r);
+    let cols = uncommitted.map(u => u.c);
+    let isHorizontal = rows.every(r => r === rows[0]);
+
+    if (uncommitted.length === 1) {
+      let r = uncommitted[0].r, c = uncommitted[0].c;
+      let startC = c; while (startC > 0 && boardState[r][startC - 1] !== null) startC--;
+      totalTurnScore += calculateWordScore(r, startC, true);
+
+      let startR = r; while (startR > 0 && boardState[startR - 1][c] !== null) startR--;
+      totalTurnScore += calculateWordScore(startR, c, false);
+    } else {
+      if (isHorizontal) {
+        let r = rows[0], startC = Math.min(...cols);
+        while (startC > 0 && boardState[r][startC - 1] !== null) startC--;
+        totalTurnScore += calculateWordScore(r, startC, true);
+        uncommitted.forEach(u => {
+          let startR = u.r; while (startR > 0 && boardState[startR - 1][u.c] !== null) startR--;
+          totalTurnScore += calculateWordScore(startR, u.c, false);
+        });
+      } else {
+        let c = cols[0], startR = Math.min(...rows);
+        while (startR > 0 && boardState[startR - 1][c] !== null) startR--;
+        totalTurnScore += calculateWordScore(startR, c, false);
+        uncommitted.forEach(u => {
+          let startC = u.c; while (startC > 0 && boardState[u.r][startC - 1] !== null) startC--;
+          totalTurnScore += calculateWordScore(u.r, startC, true);
+        });
+      }
+    }
+
+    if (uncommitted.length === 7) totalTurnScore += 50;
+
+    players[activePlayerIdx].score += totalTurnScore;
+    const drawn = drawTiles(uncommitted.length);
+    players[activePlayerIdx].rack.push(...drawn);
+
+    nextTurn();
+  }
+
+  /* VÝMĚNA */
+  function swapSelectedTiles() {
+    if (uncommitted.length > 0) return alert('Nejdříve vraťte položeno z desky!');
+    if (selectedRackIndices.length === 0) return alert('Kliknutím vybere kameny k výměně!');
+    if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dost kamenů!');
+
+    if (isHost) {
+      processSwapLogic(selectedRackIndices);
+    } else {
+      hostConn.send({ type: 'SWAP_TILES', indices: selectedRackIndices });
+    }
+  }
+
+  function handleRemoteSwap(data) {
+    processSwapLogic(data.indices);
+  }
+
+  function processSwapLogic(indices) {
+    const p = players[activePlayerIdx];
+    indices.sort((a, b) => b - a);
+    const tilesToReturn = [];
+    indices.forEach(idx => {
+      const tile = p.rack.splice(idx, 1)[0];
+      if (tile.isWildcard) tile.assignedLetter = null;
+      tilesToReturn.push(tile);
+    });
+
+    p.rack.push(...drawTiles(tilesToReturn.length));
+    tileBag.push(...tilesToReturn);
+    tileBag.sort(() => Math.random() - 0.5);
+
+    nextTurn();
+  }
+
+  /* PASS */
+  function passTurn() {
+    recallTiles();
+    if (isHost) {
+      nextTurn();
+    } else {
+      hostConn.send({ type: 'PASS_TURN' });
+    }
+  }
+
+  function handleRemotePass() {
+    nextTurn();
+  }
+
+  function nextTurn() {
+    activePlayerIdx = (activePlayerIdx + 1) % players.length;
+    notifyHostOrBroadcast();
+  }
+</script>
+</body>
+</html>
