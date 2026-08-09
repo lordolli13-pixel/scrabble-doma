@@ -325,6 +325,7 @@
   let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble!";
   
   let historyState = null;
+  let historyPlayerIdx = null;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -471,6 +472,7 @@
     
     uncommitted = [];
     selectedRackIndices = [];
+    if (!state.hasHistory) historyPlayerIdx = null;
 
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) btnReject.disabled = !state.hasHistory;
@@ -683,13 +685,20 @@
   }
 
   function saveSnapshotBeforeTurn() {
+    // Uložíme KOMPLETNÍ stav hry těsně před tahem.
+    // Díky tomu lze při neuznání vrátit desku, body, zásobník
+    // i celý pytlík přesně do stavu před tahem.
     historyState = {
       players: JSON.parse(JSON.stringify(players)),
-      activePlayerIdx,
+      activePlayerIdx: activePlayerIdx,
       tileBag: JSON.parse(JSON.stringify(tileBag)),
       boardState: JSON.parse(JSON.stringify(boardState)),
-      currentCommentary
+      currentCommentary: currentCommentary
     };
+
+    // Zapamatujeme si hráče, který právě začínal tah.
+    historyPlayerIdx = activePlayerIdx;
+
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) btnReject.disabled = false;
   }
@@ -830,17 +839,39 @@
   }
 
   function handleRejectTurnRequest() {
-    if (!historyState) return alert('Žádný tah k neuznání!');
-    
-    // Obnovení celého stavu ze snapshotu před tahem (vrátí hráče, skóre, kameny, pytlík i desku)
-    players = JSON.parse(JSON.stringify(historyState.players));
-    activePlayerIdx = historyState.activePlayerIdx; 
-    tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
-    boardState = JSON.parse(JSON.stringify(historyState.boardState)); 
-    
-    currentCommentary = `🚫 Tah byl neuznán! Kameny i body se vrátily.`;
+    if (!historyState) {
+      return alert('Žádný tah k neuznání!');
+    }
 
+    // Zapamatujeme si, kdo provedl neuznaný tah ještě před obnovením stavu.
+    const rejectedPlayerIdx = historyPlayerIdx !== null
+      ? historyPlayerIdx
+      : historyState.activePlayerIdx;
+
+    const rejectedPlayerName =
+      historyState.players[rejectedPlayerIdx]?.name || 'hráče';
+
+    // ------------------------------------------------------------
+    // VRÁCENÍ CELÉHO STAVU PŘED NEUZNANÝM TAHEM
+    // ------------------------------------------------------------
+    // Vrátí se deska, zásobník, body, pytlík i pořadí tahu.
+    players = JSON.parse(JSON.stringify(historyState.players));
+    activePlayerIdx = historyState.activePlayerIdx;
+    tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
+    boardState = JSON.parse(JSON.stringify(historyState.boardState));
+
+    // Žádné rozpracované kameny nesmí zůstat v paměti.
+    uncommitted = [];
+    selectedRackIndices = [];
+
+    currentCommentary =
+      `🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny, body i pytlík se vrátily.`;
+
+    // Jeden tah lze neuznat pouze jednou.
     historyState = null;
+    historyPlayerIdx = null;
+
+    // Host pošle opravený stav všem hráčům a zároveň ho vykreslí u sebe.
     notifyHostOrBroadcast();
   }
 
