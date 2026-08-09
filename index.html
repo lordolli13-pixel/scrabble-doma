@@ -761,8 +761,6 @@
     currentCommentary = `🎯 ${currentPlayer.name} hraje za ${totalTurnScore} b.!`;
     uncommitted = [];
 
-    // Uložíme snapshot AŽ PO odehrání tahu, aby v něm byl už komplet stav po dobrání kamenů
-    saveSnapshotBeforeTurn();
     nextTurn();
   }
 
@@ -799,7 +797,6 @@
     tileBag.sort(() => Math.random() - 0.5);
 
     currentCommentary = `🔄 ${p.name} vyměnil svoje kameny.`;
-    saveSnapshotBeforeTurn();
     nextTurn();
   }
 
@@ -808,7 +805,6 @@
     if (isHost) {
       saveSnapshotBeforeTurn();
       currentCommentary = `⏸️ ${players[activePlayerIdx].name} pasuje.`;
-      saveSnapshotBeforeTurn();
       nextTurn();
     } else {
       hostConn.send({ type: 'PASS_TURN' });
@@ -818,7 +814,6 @@
   function handleRemotePass() {
     saveSnapshotBeforeTurn();
     currentCommentary = `⏸️ ${players[activePlayerIdx].name} pasuje.`;
-    saveSnapshotBeforeTurn();
     nextTurn();
   }
 
