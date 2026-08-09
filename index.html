@@ -326,10 +326,17 @@
   
   let historyState = null;
   let historyPlayerIdx = null;
+  // Na klientovi uchováváme informaci, že existuje poslední tah, který může soupeř neuznat.
+  let remoteHistoryAvailable = false;
+  let remoteHistoryPlayerId = null;
   let rejectSequence = 0;
   let pendingReject = null;
   let pendingRejectRequest = null;
   let rejectRequestSequence = 0;
+  // Výslovný stav posledního potvrzeného tahu. Tento údaj se synchronizuje
+  // samostatně, takže klient nikdy nemusí odhadovat, zda smí tah napadnout.
+  let lastMovePlayerId = null;
+  let lastMoveExists = false;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -509,7 +516,11 @@
       tileBag: JSON.parse(JSON.stringify(tileBag)),
       boardState: JSON.parse(JSON.stringify(boardState)),
       currentCommentary,
-      hasHistory: !!historyState
+      hasHistory: !!historyState,
+      historyPlayerId: historyPlayerIdx !== null && players[historyPlayerIdx] ? players[historyPlayerIdx].id : null,
+      // Explicitní informace pro klienty.
+      lastMoveExists: !!lastMoveExists,
+      lastMovePlayerId: lastMovePlayerId
     };
   }
 
@@ -528,6 +539,10 @@
     tileBag = JSON.parse(JSON.stringify(state.tileBag || []));
     boardState = JSON.parse(JSON.stringify(state.boardState || Array(15).fill(null).map(() => Array(15).fill(null))));
     currentCommentary = state.currentCommentary || '';
+    lastMoveExists = !!state.lastMoveExists || !!state.hasHistory;
+    lastMovePlayerId = state.lastMovePlayerId || state.historyPlayerId || null;
+    remoteHistoryAvailable = lastMoveExists && !!lastMovePlayerId && lastMovePlayerId !== myId;
+    remoteHistoryPlayerId = lastMovePlayerId;
 
     // 3. Fyzicky odstranit starou desku a vytvořit úplně nový DOM element.
     // Tím se vyloučí možnost, že staré kameny zůstanou viset v prohlížeči.
@@ -561,13 +576,20 @@
     uncommitted = [];
     selectedRackIndices = [];
 
-    if (!state.hasHistory) {
+    // Klient nemá lokální historyState (snapshot je bezpečně držen hostitelem),
+    // ale musí vědět, že poslední tah existuje a kdo ho provedl.
+    lastMoveExists = !!state.lastMoveExists || !!state.hasHistory;
+    lastMovePlayerId = state.lastMovePlayerId || state.historyPlayerId || null;
+    remoteHistoryAvailable = lastMoveExists && !!lastMovePlayerId && lastMovePlayerId !== myId;
+    remoteHistoryPlayerId = lastMovePlayerId;
+
+    if (!lastMoveExists) {
       historyState = null;
       historyPlayerIdx = null;
+      remoteHistoryAvailable = false;
+      remoteHistoryPlayerId = null;
+      lastMovePlayerId = null;
     }
-
-    const btnReject = document.getElementById('btn-reject');
-    if (btnReject) btnReject.disabled = !state.hasHistory;
 
     // Důležité: nejprve fyzicky vyčistit desku a teprve potom ji
     // vykreslit z nového boardState. To opravuje situaci, kdy host
@@ -639,8 +661,11 @@
     document.getElementById('btn-recall').disabled = !myTurn;
     document.getElementById('btn-pass').disabled = !myTurn;
     if (document.getElementById('btn-reject')) {
+      const canReject = isHost
+        ? (!!lastMoveExists && !!lastMovePlayerId && lastMovePlayerId !== myId && !!historyState)
+        : (!!lastMoveExists && !!lastMovePlayerId && lastMovePlayerId !== myId);
       document.getElementById('btn-reject').disabled =
-        !historyState || !!pendingRejectRequest || !!pendingReject;
+        !canReject || !!pendingRejectRequest || !!pendingReject;
     }
 
     const sb = document.getElementById('scoreboard');
@@ -801,6 +826,8 @@
 
     // Zapamatujeme si hráče, který právě začínal tah.
     historyPlayerIdx = activePlayerIdx;
+    lastMovePlayerId = players[activePlayerIdx]?.id || null;
+    lastMoveExists = !!lastMovePlayerId;
 
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) btnReject.disabled = false;
@@ -1021,7 +1048,7 @@
 
   function handleRejectTurnRequest(requesterConn = null) {
     if (!isHost) return;
-    if (!historyState) {
+    if (!historyState || !lastMoveExists || !lastMovePlayerId) {
       return alert('Žádný tah k neuznání!');
     }
     if (pendingReject || pendingRejectRequest) return;
@@ -1137,6 +1164,10 @@
 
     historyState = null;
     historyPlayerIdx = null;
+    lastMoveExists = false;
+    lastMovePlayerId = null;
+    remoteHistoryAvailable = false;
+    remoteHistoryPlayerId = null;
     pendingRejectRequest = null;
 
     // Tvrdé obnovení hostitele.
