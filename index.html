@@ -63,6 +63,7 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.4);
     }
     button:hover { background: linear-gradient(to bottom, #e2b268, #c48e42); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .lobby-box {
       margin-top: 15px; padding: 12px; background: var(--bg-antracit-dark);
@@ -101,7 +102,6 @@
       box-shadow: 0 10px 25px rgba(0,0,0,0.7);
       border: 1px solid var(--border-color);
       flex: 1 1 auto;
-      /* Adaptabilní velikost: na PC využije maximum místa */
       width: 100%;
       max-width: min(100%, 750px);
     }
@@ -115,7 +115,7 @@
       border-radius: 6px; 
       width: 100%; 
       aspect-ratio: 1 / 1;
-      container-type: inline-size; /* Pro responzivní písmo uvnitř buněk */
+      container-type: inline-size;
     }
     
     .cell { 
@@ -130,6 +130,7 @@
       user-select: none; 
       color: #ffffff; 
       overflow: hidden;
+      transition: background-color 0.15s;
     }
     
     .cell.drag-over { background: var(--honey-main) !important; color: #121416; }
@@ -149,6 +150,7 @@
       position: relative; cursor: grab; border: 1px solid var(--tile-border);
       box-shadow: var(--tile-shadow); user-select: none;
     }
+    .tile:active { cursor: grabbing; }
     
     #rack .tile { 
       width: clamp(34px, 8vw, 48px); 
@@ -274,6 +276,7 @@
             <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
             <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
             <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Pass</button>
+            <button id="btn-reject" onclick="rejectLastTurn()" style="grid-column: span 2; background: linear-gradient(to bottom, #b02b2b, #711a1a); color:#fff; border-color:#5b1515;">❌ Neuznat předchozí tah</button>
           </div>
 
           <div class="commentary-box" id="commentary">
@@ -365,6 +368,9 @@
   let uncommitted = [];
   let selectedRackIndices = [];
   let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!";
+  
+  // ZÁLOHA PRO NEUZNÁNÍ TAHU
+  let historyState = null;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -458,6 +464,7 @@
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
     if (data.type === 'PASS_TURN') handleRemotePass();
+    if (data.type === 'REJECT_TURN') handleRejectTurnRequest();
   }
 
   /* KLIENT ZPRÁVY */
@@ -489,7 +496,6 @@
   function hostStartGame() {
     if (players.length < 2) return alert('K hraní jsou potřeba alespoň 2 hráči!');
 
-    // Inicializace pytlíku
     tileBag = [];
     CZECH_TILES.forEach(item => {
       for (let i = 0; i < item.c; i++) {
@@ -498,7 +504,6 @@
     });
     tileBag.sort(() => Math.random() - 0.5);
 
-    // Rozdání kamenů
     players.forEach(p => { p.rack = drawTiles(7); });
 
     const state = getGameState();
@@ -520,11 +525,12 @@
 
   function getGameState() {
     return {
-      players,
+      players: JSON.parse(JSON.stringify(players)),
       activePlayerIdx,
-      tileBag,
-      boardState,
-      currentCommentary
+      tileBag: JSON.parse(JSON.stringify(tileBag)),
+      boardState: JSON.parse(JSON.stringify(boardState)),
+      currentCommentary,
+      hasHistory: !!historyState
     };
   }
 
@@ -534,6 +540,9 @@
     tileBag = state.tileBag;
     boardState = state.boardState;
     if (state.currentCommentary) setCommentary(state.currentCommentary);
+    if (state.hasHistory !== undefined) {
+      document.getElementById('btn-reject').disabled = !state.hasHistory;
+    }
   }
 
   function notifyHostOrBroadcast() {
@@ -547,7 +556,7 @@
     }
   }
 
-  /* LOGIKA HRY */
+  /* RENDER HRACÍ DESKY (S DRAG & DROP) */
   function renderBoard() {
     const boardEl = document.getElementById('board');
     boardEl.innerHTML = '';
@@ -564,6 +573,26 @@
         }
 
         cell.onclick = () => onCellClick(r, c);
+
+        // Umožnění položení kamene přes Drag & Drop
+        cell.ondragover = (e) => {
+          e.preventDefault();
+          if (players[activePlayerIdx].id === myId && !boardState[r][c]) {
+            cell.classList.add('drag-over');
+          }
+        };
+        cell.ondragleave = () => cell.classList.remove('drag-over');
+        cell.ondrop = (e) => {
+          e.preventDefault();
+          cell.classList.remove('drag-over');
+          if (players[activePlayerIdx].id !== myId || boardState[r][c]) return;
+          const rackIdxData = e.dataTransfer.getData('text/plain');
+          if (rackIdxData !== '') {
+            const rackIdx = parseInt(rackIdxData, 10);
+            placeTileOnBoard(rackIdx, r, c);
+          }
+        };
+
         boardEl.appendChild(cell);
 
         if (boardState[r][c]) {
@@ -576,11 +605,11 @@
   function updateUI() {
     const myTurn = players[activePlayerIdx] && players[activePlayerIdx].id === myId;
     
-    // Zpřístupnění tlačítek pouze hráči na tahu
     document.getElementById('btn-play').disabled = !myTurn;
     document.getElementById('btn-swap').disabled = !myTurn;
     document.getElementById('btn-recall').disabled = !myTurn;
     document.getElementById('btn-pass').disabled = !myTurn;
+    document.getElementById('btn-reject').disabled = !historyState;
 
     const sb = document.getElementById('scoreboard');
     sb.innerHTML = '';
@@ -604,11 +633,14 @@
     return players.find(p => p.id === myId);
   }
 
+  /* RENDER ZÁSOBNÍKU (S DRAG & DROP) */
   function renderRack() {
     const rackEl = document.getElementById('rack');
     rackEl.innerHTML = '';
     const myPlayer = getMyPlayer();
     if (!myPlayer) return;
+
+    const isMyTurn = players[activePlayerIdx] && players[activePlayerIdx].id === myId;
 
     myPlayer.rack.forEach((tile, idx) => {
       const tileEl = document.createElement('div');
@@ -618,8 +650,17 @@
 
       if (selectedRackIndices.includes(idx)) tileEl.classList.add('selected');
 
+      // Drag & Drop z nastavení
+      if (isMyTurn) {
+        tileEl.draggable = true;
+        tileEl.ondragstart = (e) => {
+          e.dataTransfer.setData('text/plain', idx.toString());
+          e.dataTransfer.effectAllowed = 'move';
+        };
+      }
+
       tileEl.onclick = () => {
-        if (players[activePlayerIdx].id !== myId) return; // Pouze na vlastním tahu
+        if (!isMyTurn) return;
         if (selectedRackIndices.includes(idx)) {
           selectedRackIndices = selectedRackIndices.filter(i => i !== idx);
         } else {
@@ -645,7 +686,7 @@
   }
 
   function onCellClick(r, c) {
-    if (players[activePlayerIdx].id !== myId) return; // Pouze na vlastním tahu
+    if (players[activePlayerIdx].id !== myId) return;
     if (selectedRackIndices.length === 1 && !boardState[r][c]) {
       placeTileOnBoard(selectedRackIndices[0], r, c);
     }
@@ -654,6 +695,8 @@
   function placeTileOnBoard(rackIdx, r, c) {
     const p = getMyPlayer();
     const tile = p.rack[rackIdx];
+
+    if (!tile) return;
 
     if (tile.isWildcard && !tile.assignedLetter) {
       const input = prompt('Napište písmeno, které má žolík zastupovat:');
@@ -692,6 +735,7 @@
     if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
 
     if (isHost) {
+      saveSnapshotBeforeTurn();
       processTurnLogic();
     } else {
       hostConn.send({ type: 'PLAY_TURN', uncommitted, boardState, rack: getMyPlayer().rack });
@@ -699,11 +743,22 @@
   }
 
   function handleRemoteTurn(data) {
+    saveSnapshotBeforeTurn();
     const player = players[activePlayerIdx];
     player.rack = data.rack;
     uncommitted = data.uncommitted;
     boardState = data.boardState;
     processTurnLogic();
+  }
+
+  function saveSnapshotBeforeTurn() {
+    historyState = {
+      players: JSON.parse(JSON.stringify(players)),
+      activePlayerIdx,
+      tileBag: JSON.parse(JSON.stringify(tileBag)),
+      boardState: JSON.parse(JSON.stringify(boardState)),
+      currentCommentary
+    };
   }
 
   function processTurnLogic() {
@@ -786,6 +841,7 @@
     if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dost kamenů!');
 
     if (isHost) {
+      saveSnapshotBeforeTurn();
       processSwapLogic(selectedRackIndices);
     } else {
       hostConn.send({ type: 'SWAP_TILES', indices: selectedRackIndices });
@@ -793,6 +849,7 @@
   }
 
   function handleRemoteSwap(data) {
+    saveSnapshotBeforeTurn();
     processSwapLogic(data.indices);
   }
 
@@ -819,6 +876,7 @@
   function passTurn() {
     recallTiles();
     if (isHost) {
+      saveSnapshotBeforeTurn();
       const p = players[activePlayerIdx];
       setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
       nextTurn();
@@ -828,9 +886,40 @@
   }
 
   function handleRemotePass() {
+    saveSnapshotBeforeTurn();
     const p = players[activePlayerIdx];
     setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
     nextTurn();
+  }
+
+  /* NEUZNÁNÍ TAHU (REJECT / CHALLENGE) */
+  function rejectLastTurn() {
+    if (!historyState) return alert('Není k dispozici žádný předchozí tah k neuznání.');
+
+    if (isHost) {
+      handleRejectTurnRequest();
+    } else {
+      hostConn.send({ type: 'REJECT_TURN' });
+    }
+  }
+
+  function handleRejectTurnRequest() {
+    if (!historyState) return;
+    
+    const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
+
+    // Obnovení stavu ze zálohy
+    players = JSON.parse(JSON.stringify(historyState.players));
+    activePlayerIdx = historyState.activePlayerIdx;
+    tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
+    boardState = JSON.parse(JSON.stringify(historyState.boardState));
+    
+    setCommentary(`🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny i body byly vráceny.`);
+
+    // Smazání zálohy – neuznat lze pouze bezprostředně předchozí tah
+    historyState = null;
+
+    notifyHostOrBroadcast();
   }
 
   function nextTurn() {
