@@ -63,7 +63,7 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.4);
     }
     button:hover { background: linear-gradient(to bottom, #e2b268, #c48e42); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
 
     .lobby-box {
       margin-top: 15px; padding: 12px; background: var(--bg-antracit-dark);
@@ -274,7 +274,7 @@
             <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
             <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
             <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Pass</button>
-            <button id="btn-reject" onclick="rejectLastTurn()" style="grid-column: span 2; background: linear-gradient(to bottom, #b02b2b, #711a1a); color:#fff; border-color:#5b1515;">❌ Neuznat předchozí tah</button>
+            <button id="btn-reject" onclick="rejectLastTurn()" style="grid-column: span 2; background: linear-gradient(to bottom, #b02b2b, #711a1a); color:#fff; border-color:#5b1515;" disabled>❌ Neuznat předchozí tah</button>
           </div>
 
           <div class="commentary-box" id="commentary">
@@ -367,7 +367,7 @@
   let selectedRackIndices = [];
   let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!";
   
-  // ZÁLOHA PRO NEUZNÁNÍ TAHU
+  // ZÁLOHA PRO NEUZNÁNÍ TAHU (UCHOVÁVÁ HOST)
   let historyState = null;
 
   function generateRoomCode() {
@@ -539,7 +539,7 @@
     boardState = state.boardState;
     if (state.currentCommentary) setCommentary(state.currentCommentary);
     
-    // Zapnutí nebo vypnutí tlačítka Neuznat tah podle historie
+    // Povolení / Zákaz tlačítka Neuznat tah podle historie
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) {
       btnReject.disabled = !state.hasHistory;
@@ -907,7 +907,7 @@
     
     const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
 
-    // Obnovení stavu ze zálohy
+    // Obnovení kompletního stavu ze zálohy
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx;
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
