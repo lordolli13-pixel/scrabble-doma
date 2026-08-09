@@ -135,6 +135,22 @@
     #rack { display: flex; gap: 6px; min-height: 42px; align-items: center; justify-content: center; }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
     .controls button { width: 100%; font-size: 13px; padding: 8px; }
+
+    .commentary-box {
+      margin-top: 10px;
+      padding: 8px;
+      background: var(--bg-antracit-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 12px;
+      color: var(--honey-light);
+      font-style: italic;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -163,6 +179,7 @@
       <h1 id="room-code-display" style="color: var(--honey-main); letter-spacing: 3px; margin: 5px 0;">----</h1>
       <p style="font-size: 12px; color: #9da5ac; margin-top: 8px;">Připojení hráči:</p>
       <ul id="connected-players-list" style="list-style: none; margin: 5px 0; font-weight: bold;"></ul>
+      <button id="shuffle-btn" onclick="shufflePlayers()" style="margin-top: 10px; display: none; width: 100%; background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Rozlosovat pořadí</button>
       <button id="start-btn" onclick="hostStartGame()" style="margin-top: 10px; display: none; width: 100%;">Odstartovat hru!</button>
     </div>
   </div>
@@ -194,6 +211,10 @@
             <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
             <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
             <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Pass</button>
+          </div>
+
+          <div class="commentary-box" id="commentary">
+            🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!
           </div>
         </div>
       </div>
@@ -237,6 +258,34 @@
     ['W3','','','L2','','','','W3','','','','L2','','','W3']
   ];
 
+  const COMMENTARY_PLAY_HIGH = [
+    "🔥 {player} to tam nasázel jako profesionál! Parádních {pts} bodů!",
+    "🚀 Neskutečný tah! {player} získává {pts} bodů a soupeři jen tichým závistivým pohledem zírají.",
+    "💥 Boom! {player} předvedl mistrovské dílo za {pts} bodů!"
+  ];
+
+  const COMMENTARY_PLAY_MID = [
+    "👏 Solidní práce! {player} bere {pts} bodů.",
+    "🎯 Přesně takhle se to dělá. {player} zapisuje {pts} bodů.",
+    "Pěkné slovo! {player} si připisuje {pts} bodů."
+  ];
+
+  const COMMENTARY_PLAY_LOW = [
+    "🙂 Skromný, ale platný tah. {player} bere {pts} bodů.",
+    "Opatrný postup. {player} získává {pts} bodů.",
+    "Kvapem po troškách! {player} má za tento tah {pts} bodů."
+  ];
+
+  const COMMENTARY_SWAP = [
+    "🔄 {player} posílá neposlušné kameny zpět do pytlíku a doufá v zázrak!",
+    "🎲 {player} mění kameny. Snad z toho pytlíku vytáhne lepší konstelaci hvězd."
+  ];
+
+  const COMMENTARY_PASS = [
+    "😴 {player} takticky pasuje a dává prostor ostatním.",
+    "⏸️ {player} tentokrát vzdává boj bez boje a předává tah!"
+  ];
+
   // SÍŤOVÉ PROMĚNNÉ
   let peer = null;
   let myId = null;
@@ -252,6 +301,7 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
+  let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!";
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -270,6 +320,7 @@
       document.getElementById('lobby-info').style.display = 'block';
       document.getElementById('room-code-display').innerText = roomCode;
       document.getElementById('start-btn').style.display = 'block';
+      document.getElementById('shuffle-btn').style.display = 'block';
       
       players.push({ id: myId, name: myName, score: 0, rack: [] });
       updateLobbyUI();
@@ -308,9 +359,30 @@
     peer.on('error', () => alert('Kód místnosti nenalezen nebo hra neexistuje!'));
   }
 
+  function shufflePlayers() {
+    if (!isHost) return;
+    for (let i = players.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [players[i], players[j]] = [players[j], players[i]];
+    }
+    updateLobbyUI();
+    broadcast({ type: 'LOBBY_UPDATE', players });
+  }
+
   function updateLobbyUI() {
     const list = document.getElementById('connected-players-list');
     list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
+  }
+
+  function setCommentary(msg) {
+    currentCommentary = msg;
+    const el = document.getElementById('commentary');
+    if (el) el.innerText = msg;
+  }
+
+  function getRandomPhrase(arr, player, pts = 0) {
+    const template = arr[Math.floor(Math.random() * arr.length)];
+    return template.replace('{player}', player).replace('{pts}', pts);
   }
 
   /* HOST ZPRÁVY */
@@ -388,7 +460,8 @@
       players,
       activePlayerIdx,
       tileBag,
-      boardState
+      boardState,
+      currentCommentary
     };
   }
 
@@ -397,6 +470,7 @@
     activePlayerIdx = state.activePlayerIdx;
     tileBag = state.tileBag;
     boardState = state.boardState;
+    if (state.currentCommentary) setCommentary(state.currentCommentary);
   }
 
   function notifyHostOrBroadcast() {
@@ -458,6 +532,9 @@
 
     document.getElementById('bag-count').innerText = tileBag.length;
     document.getElementById('current-player-title').innerText = `Na tahu: ${players[activePlayerIdx] ? players[activePlayerIdx].name : '-'}`;
+
+    const commEl = document.getElementById('commentary');
+    if (commEl) commEl.innerText = currentCommentary;
 
     renderRack();
   }
@@ -625,9 +702,19 @@
 
     if (uncommitted.length === 7) totalTurnScore += 50;
 
-    players[activePlayerIdx].score += totalTurnScore;
+    const currentPlayer = players[activePlayerIdx];
+    currentPlayer.score += totalTurnScore;
+
+    if (totalTurnScore >= 20) {
+      setCommentary(getRandomPhrase(COMMENTARY_PLAY_HIGH, currentPlayer.name, totalTurnScore));
+    } else if (totalTurnScore >= 10) {
+      setCommentary(getRandomPhrase(COMMENTARY_PLAY_MID, currentPlayer.name, totalTurnScore));
+    } else {
+      setCommentary(getRandomPhrase(COMMENTARY_PLAY_LOW, currentPlayer.name, totalTurnScore));
+    }
+
     const drawn = drawTiles(uncommitted.length);
-    players[activePlayerIdx].rack.push(...drawn);
+    currentPlayer.rack.push(...drawn);
 
     nextTurn();
   }
@@ -663,6 +750,8 @@
     tileBag.push(...tilesToReturn);
     tileBag.sort(() => Math.random() - 0.5);
 
+    setCommentary(getRandomPhrase(COMMENTARY_SWAP, p.name));
+
     nextTurn();
   }
 
@@ -670,6 +759,8 @@
   function passTurn() {
     recallTiles();
     if (isHost) {
+      const p = players[activePlayerIdx];
+      setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
       nextTurn();
     } else {
       hostConn.send({ type: 'PASS_TURN' });
@@ -677,6 +768,8 @@
   }
 
   function handleRemotePass() {
+    const p = players[activePlayerIdx];
+    setCommentary(getRandomPhrase(COMMENTARY_PASS, p.name));
     nextTurn();
   }
 
