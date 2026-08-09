@@ -389,7 +389,7 @@
       document.getElementById('start-btn').style.display = 'block';
       document.getElementById('shuffle-btn').style.display = 'block';
       
-      players.push({ id: myId, name: myName, score: 0, rack: [] });
+      players = [{ id: myId, name: myName, score: 0, rack: [] }];
       updateLobbyUI();
     });
 
@@ -488,7 +488,9 @@
   }
 
   function broadcast(data) {
-    clientConns.forEach(c => c.send(data));
+    clientConns.forEach(c => {
+      if (c.open) c.send(data);
+    });
   }
 
   function hostStartGame() {
@@ -539,7 +541,6 @@
     boardState = state.boardState;
     if (state.currentCommentary) setCommentary(state.currentCommentary);
     
-    // Povolení / Zákaz tlačítka Neuznat tah podle historie
     const btnReject = document.getElementById('btn-reject');
     if (btnReject) {
       btnReject.disabled = !state.hasHistory;
@@ -578,7 +579,7 @@
         // Drag & Drop
         cell.ondragover = (e) => {
           e.preventDefault();
-          if (players[activePlayerIdx].id === myId && !boardState[r][c]) {
+          if (players[activePlayerIdx] && players[activePlayerIdx].id === myId && !boardState[r][c]) {
             cell.classList.add('drag-over');
           }
         };
@@ -586,7 +587,7 @@
         cell.ondrop = (e) => {
           e.preventDefault();
           cell.classList.remove('drag-over');
-          if (players[activePlayerIdx].id !== myId || boardState[r][c]) return;
+          if (!players[activePlayerIdx] || players[activePlayerIdx].id !== myId || boardState[r][c]) return;
           const rackIdxData = e.dataTransfer.getData('text/plain');
           if (rackIdxData !== '') {
             const rackIdx = parseInt(rackIdxData, 10);
@@ -685,7 +686,7 @@
   }
 
   function onCellClick(r, c) {
-    if (players[activePlayerIdx].id !== myId) return;
+    if (!players[activePlayerIdx] || players[activePlayerIdx].id !== myId) return;
     if (selectedRackIndices.length === 1 && !boardState[r][c]) {
       placeTileOnBoard(selectedRackIndices[0], r, c);
     }
@@ -718,6 +719,7 @@
 
   function recallTiles() {
     const p = getMyPlayer();
+    if (!p) return;
     uncommitted.forEach(u => {
       if (u.tile.isWildcard) u.tile.assignedLetter = null;
       boardState[u.r][u.c] = null;
@@ -836,7 +838,7 @@
   /* VÝMĚNA */
   function swapSelectedTiles() {
     if (uncommitted.length > 0) return alert('Nejdříve vraťte položeno z desky!');
-    if (selectedRackIndices.length === 0) return alert('Kliknutím vybere kameny k výměně!');
+    if (selectedRackIndices.length === 0) return alert('Kliknutím vyberte kameny k výměně!');
     if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dost kamenů!');
 
     if (isHost) {
@@ -907,7 +909,6 @@
     
     const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
 
-    // Obnovení kompletního stavu ze zálohy
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx;
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
@@ -915,7 +916,6 @@
     
     setCommentary(`🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny i body byly vráceny.`);
 
-    // Smazání zálohy – neuznat lze pouze bezprostředně předchozí tah
     historyState = null;
 
     notifyHostOrBroadcast();
