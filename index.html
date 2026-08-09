@@ -690,6 +690,8 @@
       boardState: JSON.parse(JSON.stringify(boardState)),
       currentCommentary
     };
+    const btnReject = document.getElementById('btn-reject');
+    if (btnReject) btnReject.disabled = false;
   }
 
   function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
@@ -833,7 +835,8 @@
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx; 
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
-    boardState = JSON.parse(JSON.stringify(historyState.boardState));
+    boardState = JSON.parse(JSON.stringify(boardState)); // zachová desku předtím
+    boardState = JSON.parse(JSON.stringify(historyState.boardState)); 
     
     currentCommentary = `🚫 Tah byl neuznán! Kameny i body se vrátily.`;
 
