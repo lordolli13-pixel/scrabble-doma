@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scrabble - Multiplayer</title>
-  <!-- Načtení knihovny PeerJS pro propojení zařízení -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -266,7 +265,7 @@
           </div>
 
           <div class="commentary-box" id="commentary">
-            🗣️ Vítáme vás u zápasu Scrabble! Hodně štěstí všem!
+            🗣️ Vítáme vás u zápasu Scrabble!
           </div>
         </div>
       </div>
@@ -310,14 +309,12 @@
     ['W3','','','L2','','','','W3','','','','L2','','','W3']
   ];
 
-  // SÍŤ
   let peer = null;
   let myId = null;
   let isHost = false;
   let hostConn = null; 
   let clientConns = []; 
 
-  // STAV
   let myName = "";
   let players = []; 
   let activePlayerIdx = 0;
@@ -327,7 +324,6 @@
   let selectedRackIndices = [];
   let currentCommentary = "🗣️ Vítáme vás u zápasu Scrabble!";
   
-  // ZÁLOHA PRO ZPĚTNÝ TAH
   let historyState = null;
 
   function generateRoomCode() {
@@ -473,7 +469,6 @@
     boardState = state.boardState;
     currentCommentary = state.currentCommentary;
     
-    // NULOVÁNÍ LOKÁLNÍCH VÝBĚRŮ
     uncommitted = [];
     selectedRackIndices = [];
 
@@ -746,7 +741,6 @@
     const currentPlayer = players[activePlayerIdx];
     currentPlayer.score += totalTurnScore;
 
-    // Doplnění kamenů do stojánku ze sáčku
     const drawn = drawTiles(uncommitted.length);
     currentPlayer.rack.push(...drawn);
 
@@ -808,7 +802,6 @@
     nextTurn();
   }
 
-  /* NEUZNÁNÍ TAHU (REJECT / STORNO) */
   function rejectLastTurn() {
     if (isHost) {
       handleRejectTurnRequest();
@@ -822,21 +815,15 @@
   function handleRejectTurnRequest() {
     if (!historyState) return alert('Žádný tah k neuznání!');
     
-    // Zjištění jména hráče, jehož tah stornujeme
-    const rejectedPlayerName = historyState.players[historyState.activePlayerIdx].name;
-
-    // Kompletní obnova předchozího stavu
+    // Obnovíme kompletní předchozí stav (deska, skóre, pytlík)
     players = JSON.parse(JSON.stringify(historyState.players));
-    activePlayerIdx = historyState.activePlayerIdx;
+    activePlayerIdx = historyState.activePlayerIdx; // Vracíme tah přesně tomu hráči, který jej udělal
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
     boardState = JSON.parse(JSON.stringify(historyState.boardState));
     
-    currentCommentary = `🚫 Tah hráče ${rejectedPlayerName} byl neuznán! Kameny i body byly vráceny.`;
+    currentCommentary = `🚫 Tah hráče ${players[activePlayerIdx].name} byl neuznán! Kameny i body se vrátily.`;
 
-    // Vymazání historii, aby nešlo stornovat vícekrát za sebou
     historyState = null;
-
-    // Distribuce nového (obnoveného) stavu všem hráčům
     notifyHostOrBroadcast();
   }
 
