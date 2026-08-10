@@ -198,10 +198,18 @@
     .panel h3 { font-size: 16px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px; color: var(--honey-light); }
     
     .player-row { 
-      display: flex; justify-content: space-between; padding: 8px; 
-      border-radius: 4px; margin-bottom: 4px; background: var(--bg-antracit-dark); color: #9da5ac; font-size: 14px;
+      display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; 
+      border-radius: 6px; margin-bottom: 6px; background: var(--bg-antracit-dark); color: #9da5ac; font-size: 14px;
+      border: 1px solid transparent;
     }
-    .player-row.active { border: 1px solid var(--honey-main); background: #272c30; color: #ffffff; }
+    
+    /* ZVÝRAZNĚNÍ AKTIVNÍHO HRÁČE (BEZ PULZOVÁNÍ) */
+    .player-row.active { 
+      border: 2px solid var(--honey-main); 
+      background: linear-gradient(135deg, #272c30 0%, #1a2228 100%); 
+      color: #ffffff; 
+      box-shadow: 0 0 8px rgba(212, 163, 89, 0.3);
+    }
 
     .rack-container {
       background: var(--bg-antracit-dark); padding: 10px; 
@@ -680,9 +688,12 @@
     const sb = document.getElementById('scoreboard');
     sb.innerHTML = '';
     players.forEach((p, idx) => {
+      const isActive = (idx === activePlayerIdx);
       const div = document.createElement('div');
-      div.className = `player-row ${idx === activePlayerIdx ? 'active' : ''}`;
-      div.innerHTML = `<span>${p.name} ${p.id === myId ? '(Ty)' : ''}</span><strong>${p.score} b.</strong>`;
+      div.className = `player-row ${isActive ? 'active' : ''}`;
+      
+      let indicator = isActive ? '➡️ ' : '';
+      div.innerHTML = `<span>${indicator}${p.name} ${p.id === myId ? '(Ty)' : ''}</span><strong>${p.score} b.</strong>`;
       sb.appendChild(div);
     });
 
@@ -820,7 +831,7 @@
   }
 
   function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
-    consecutivePasses = 0; // Úspěšný tah nuluje počítadlo pasů
+    consecutivePasses = 0; 
     let totalTurnScore = 0;
     let countedTileKeys = new Set();
 
@@ -921,7 +932,6 @@
 
     uncommitted = [];
 
-    // KONTROLA KONCE HRY: Pytlík je prázdný a hráč vyprázdnil stojánek
     if (tileBag.length === 0 && players[playerIdx].rack.length === 0) {
       endGame(`${players[playerIdx].name} vyložil všechny kameny!`);
       return;
@@ -947,7 +957,6 @@
     currentCommentary = `⏭️ ${players[activePlayerIdx].name} vynechal tah.`;
     consecutivePasses++;
     
-    // KONTROLA KONCE HRY: Všichni hráči dvakrát za sebou pasovali
     if (consecutivePasses >= players.length * 2) {
       endGame("Hra skončila: Všichni hráči dvakrát po sobě pasovali.");
       return;
@@ -985,7 +994,6 @@
   function endGame(reasonText) {
     isGameOver = true;
     
-    // Závěrečné odečtení bodů za zbývající kameny ve stojánku
     players.forEach(p => {
       let penalty = 0;
       p.rack.forEach(tile => {
@@ -995,7 +1003,6 @@
       if (p.score < 0) p.score = 0;
     });
 
-    // Seřazení hráčů podle skóre
     let sortedPlayers = [...players].sort((a, b) => b.score - a.score);
 
     window._lastGameOverData = {
