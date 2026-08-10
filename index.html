@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#121416">
-  <title>Scrabble Online – Multiplayer v9</title>
+  <title>Scrabble Online – Multiplayer v10</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -134,7 +134,7 @@
 <body>
   <div id="setup-screen">
     <h1>SCRABBLE ONLINE</h1>
-    <div class="sub">Multiplayer v9 • stabilnější hra pro 2–4 hráče</div>
+    <div class="sub">Multiplayer v10 • bez slovníku</div>
     
     <label for="player-name-input">Tvoje jméno</label>
     <input id="player-name-input" maxlength="20" placeholder="Napiš své jméno" value="Hráč">
@@ -428,8 +428,20 @@
       updateUI();
       updateChatUI();
       updateHistory();
+      renderScoreboard();
     }
     
+    function renderScoreboard() {
+      const sb = document.getElementById('scoreboard');
+      if (!sb) return;
+      sb.innerHTML = players.map((p, i) => `
+        <div class="score-row ${i === activePlayerIdx ? 'active' : ''} ${p.id === myId ? 'me' : ''}">
+          <span>${esc(p.name)} ${p.id === myId ? '<span class="badge">Ty</span>' : ''}</span>
+          <strong>${p.score} b.</strong>
+        </div>
+      `).join('');
+    }
+
     function renderBoard() {
       const b = document.getElementById('board');
       b.innerHTML = '';
@@ -584,6 +596,7 @@
       }
     }
     
+    // ZDE JE ÚPLNĚ ODSTRANĚNA KONTROLA SLOV PODLE SLOVNÍKU
     function validateTurn(player, placements) {
       if (!Array.isArray(placements) || !placements.length) return { ok: false, msg: 'Tah neobsahuje žádný kámen.' };
       if (placements.length > 7) return { ok: false, msg: 'Nelze položit více než 7 kamenů.' };
@@ -714,12 +727,12 @@
       const names = calc.words.map(w => w.text).filter(Boolean);
       history.push({
         player: p.name,
-        words: names,
+        words: names.length ? names : ['Tah'],
         score: calc.score,
         time: new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
       });
       if (history.length > 50) history.shift();
-      currentCommentary = calc.bingo ? `🔥 ${p.name} – BINGO! +${calc.score} bodů` : `✨ ${p.name} zahrál ${names.join(' + ')} za ${calc.score} bodů.`;
+      currentCommentary = calc.bingo ? `🔥 ${p.name} – BINGO! +${calc.score} bodů` : `✨ ${p.name} zahrál tah za ${calc.score} bodů.`;
       uncommitted = [];
       localRack = [];
       selectedRackIndices = [];
@@ -823,6 +836,7 @@
       document.getElementById('bag-count').textContent = isHost ? tileBag.length : clientBagCount;
       document.getElementById('current-player-title').textContent = 'Na tahu: ' + (players[activePlayerIdx]?.name || '–');
       document.getElementById('turn-hint').textContent = myTurn ? (uncommitted.length ? 'Kameny jsou na desce, potvrďte tah.' : 'Vyberte kameny z lízátka na desku.') : ('Čeká se na hráče: ' + (players[activePlayerIdx]?.name || ''));
+      renderScoreboard();
     }
     
     function updateChatUI() {
