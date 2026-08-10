@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer v9.1</title>
+  <title>Scrabble - Multiplayer v7</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -217,14 +217,6 @@
       border-radius: 4px; font-size: 13px; color: var(--honey-light);
       font-style: italic; min-height: 48px; display: flex;
       align-items: center; justify-content: center; text-align: center;
-      flex-direction: column;
-    }
-
-    .preview-score {
-      font-weight: bold;
-      color: var(--honey-main);
-      margin-top: 3px;
-      font-size: 14px;
     }
 
     /* CHAT STYLES */
@@ -272,17 +264,37 @@
       font-size: 13px;
     }
 
-    /* MODAL OVERLAY */
-    #modal-overlay {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center;
+    /* VYHODNOCOVACÍ MODÁLNÍ OKNO */
+    #game-over-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
     }
     .modal-content {
-      background: var(--bg-antracit-panel); border: 1px solid var(--border-color);
-      padding: 30px; border-radius: 10px; max-width: 450px; width: 100%; text-align: center;
+      background: var(--bg-antracit-panel);
+      border: 1px solid var(--border-color);
+      padding: 30px;
+      border-radius: 10px;
+      max-width: 500px;
+      width: 90%;
+      text-align: center;
       box-shadow: 0 10px 30px rgba(0,0,0,0.9);
     }
-    .modal-content h2 { color: var(--honey-main); margin-bottom: 15px; }
+    .modal-content h2 { color: var(--honey-main); margin-bottom: 15px; font-size: 28px; }
+    .final-score-row {
+      display: flex; justify-content: space-between; padding: 10px;
+      background: var(--bg-antracit-dark); margin-bottom: 6px; border-radius: 4px;
+      font-size: 16px; font-weight: bold;
+    }
+    .winner-highlight {
+      border: 2px solid var(--honey-main);
+      background: #272c30;
+      color: #ffffff;
+    }
   </style>
 </head>
 <body>
@@ -300,7 +312,7 @@
     </div>
 
     <div style="border-top: 1px solid var(--border-color); padding-top: 15px;">
-      <label style="font-size: 12px; color: #9da5ac;">Máš kód místnosti?</label>
+      <label style="font-size: 12px; color: #9da5ac;">Máš kód od zakladatele?</label>
       <input type="text" id="join-code-input" placeholder="Vlož Kód místnosti">
       <button onclick="joinGame()" style="width: 100%; background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Připojit se ke hře</button>
     </div>
@@ -346,8 +358,7 @@
             </div>
 
             <div class="commentary-box" id="commentary">
-              <div>🗣️ Scrabble Online v9.1</div>
-              <div class="preview-score" id="preview-score-box"></div>
+              🗣️ Scrabble Online v7
             </div>
           </div>
         </div>
@@ -366,12 +377,13 @@
     </div>
   </div>
 
-  <!-- MODÁLNÍ OKNO KONCE HRY -->
-  <div id="modal-overlay">
+  <!-- MODÁLNÍ OKNO PRO KONEC HRY -->
+  <div id="game-over-modal">
     <div class="modal-content">
       <h2>Konec hry!</h2>
-      <div id="final-results" style="margin: 15px 0; font-size: 15px; text-align: left;"></div>
-      <button onclick="location.reload()" style="width: 100%;">Hrát znovu</button>
+      <p id="game-over-reason" style="margin-bottom: 15px; color: #9da5ac; font-size: 14px;"></p>
+      <div id="final-scores-list" style="margin-bottom: 20px;"></div>
+      <button onclick="location.reload()" style="width: 100%; padding: 12px; font-size: 15px;">Hrát znovu</button>
     </div>
   </div>
 
@@ -416,19 +428,19 @@
   let myId = null;
   let isHost = false;
   let hostConn = null; 
-  let clientConns = {}; 
+  let clientConns = []; 
 
   let myName = "";
-  let currentRoomCode = "";
   let players = []; 
   let activePlayerIdx = 0;
   let tileBag = [];
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Scrabble Online v9.1";
+  let currentCommentary = "🗣️ Scrabble Online v7";
   let chatMessages = [];
-  let gameEnded = false;
+  let consecutivePasses = 0;
+  let isGameOver = false;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -437,41 +449,24 @@
   function createGame() {
     myName = document.getElementById('player-name-input').value.trim() || 'Zakladatel';
     isHost = true;
-    currentRoomCode = generateRoomCode();
+    const roomCode = generateRoomCode();
 
-    let hostPeerId = 'scrabble-host-' + currentRoomCode + '-' + Math.floor(Math.random() * 1000);
-    peer = new Peer(hostPeerId);
+    peer = new Peer('scrabble-room-' + roomCode);
 
     peer.on('open', (id) => {
       myId = id;
-      document.getElementById('setup-screen').style.display = 'none';
-      document.getElementById('game-screen').style.display = 'flex';
       document.getElementById('lobby-info').style.display = 'block';
-      document.getElementById('room-code-display').innerText = currentRoomCode;
+      document.getElementById('room-code-display').innerText = roomCode;
       document.getElementById('start-btn').style.display = 'block';
       document.getElementById('shuffle-btn').style.display = 'block';
       
       players = [{ id: myId, name: myName, score: 0, rack: [] }];
       updateLobbyUI();
-      renderBoard();
-      updateUI();
     });
 
     peer.on('connection', (conn) => {
+      clientConns.push(conn);
       conn.on('data', (data) => handleHostMessage(conn, data));
-      conn.on('close', () => {
-        Object.keys(clientConns).forEach(id => {
-          if (clientConns[id] === conn) {
-            delete clientConns[id];
-            const p = players.find(pl => pl.id === id);
-            if (p) {
-              chatMessages.push({ author: 'Systém', text: `Hráč ${p.name} se odpojil.` });
-              broadcast({ type: 'CHAT_MSG', msg: chatMessages[chatMessages.length - 1] });
-              updateChatUI();
-            }
-          }
-        });
-      });
     });
 
     peer.on('error', (err) => alert('Chyba při zakládání: ' + err.type));
@@ -482,74 +477,23 @@
     const roomCode = document.getElementById('join-code-input').value.trim();
     if (!roomCode) return alert('Zadejte kód místnosti!');
 
-    currentRoomCode = roomCode;
     isHost = false;
-    connectToPeerHost(roomCode);
-  }
-
-  function connectToPeerHost(roomCode) {
-    let clientId = localStorage.getItem('scrabble_client_id');
-    if (!clientId) {
-      clientId = 'client-' + Math.random().toString(36).substring(2, 9);
-      localStorage.setItem('scrabble_client_id', clientId);
-    }
-    myId = clientId;
-
-    if (peer) {
-      try { peer.destroy(); } catch(e) {}
-    }
-
     peer = new Peer();
 
     peer.on('open', (id) => {
-      // Hledání hostitele podle kódu místnosti pomocí veřejného serveru
-      const targetHostIdPrefix = 'scrabble-host-' + roomCode;
-      
-      // Protože PeerJS neumožňuje wildcard vyhledávání, připojujeme se na odhadovaný ID tvar
-      // Pro spolehlivost zkusíme navázat spojení
-      let connected = false;
-      
-      // Pokusíme se připojit na primární variantu ID
-      let conn = peer.connect(targetHostIdPrefix + '-0');
-      
-      const setupConnEvents = (c) => {
-        hostConn = c;
-        hostConn.on('open', () => {
-          connected = true;
-          hostConn.send({ type: 'RECONNECT_OR_JOIN', name: myName, id: myId });
-        });
+      myId = id;
+      hostConn = peer.connect('scrabble-room-' + roomCode);
 
-        hostConn.on('data', (data) => handleClientMessage(data));
+      hostConn.on('open', () => {
+        hostConn.send({ type: 'JOIN', name: myName, id: myId });
+        document.getElementById('lobby-info').style.display = 'block';
+        document.getElementById('room-code-display').innerText = roomCode;
+      });
 
-        hostConn.on('close', () => {
-          setTimeout(() => {
-            if (!gameEnded) {
-              connectToPeerHost(roomCode);
-            }
-          }, 3000);
-        });
-      };
-
-      setupConnEvents(conn);
-
-      // Pokud by první pokus selhal (kvůli náhodnému suffixu), zkusíme vyhledat skrze síť nebo upozorníme
-      setTimeout(() => {
-        if (!connected) {
-          // Zkusíme štěstí s přímým ID bez suffixu nebo s jiným pokusem
-          let connAlt = peer.connect(targetHostIdPrefix);
-          setupConnEvents(connAlt);
-        }
-      }, 1000);
+      hostConn.on('data', (data) => handleClientMessage(data));
     });
 
-    peer.on('error', (err) => {
-      if (err.type === 'peer-unavailable') {
-        alert('Místnost s tímto kódem nebyla nalezena. Zkontrolujte kód.');
-      } else if (err.type === 'unavailable-id') {
-        localStorage.removeItem('scrabble_client_id');
-        location.reload();
-      }
-    });
+    peer.on('error', () => alert('Kód místnosti nenalezen!'));
   }
 
   function shufflePlayers() {
@@ -564,28 +508,14 @@
 
   function updateLobbyUI() {
     const list = document.getElementById('connected-players-list');
-    if (list) {
-      list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
-    }
+    list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
   }
 
   function handleHostMessage(conn, data) {
-    if (data.type === 'RECONNECT_OR_JOIN') {
-      clientConns[data.id] = conn;
-      let existing = players.find(p => p.id === data.id);
-      if (!existing) {
-        players.push({ id: data.id, name: data.name, score: 0, rack: [] });
-        chatMessages.push({ author: 'Systém', text: `Hráč ${data.name} se připojil.` });
-      } else {
-        existing.name = data.name;
-        chatMessages.push({ author: 'Systém', text: `Hráč ${data.name} se znovu připojil do hry.` });
-      }
+    if (data.type === 'JOIN') {
+      players.push({ id: data.id, name: data.name, score: 0, rack: [] });
       updateLobbyUI();
       broadcast({ type: 'LOBBY_UPDATE', players });
-      broadcast({ type: 'CHAT_MSG', msg: chatMessages[chatMessages.length - 1] });
-      updateChatUI();
-
-      conn.send({ type: 'SYNC_STATE', state: getGameState() });
     }
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
@@ -607,6 +537,9 @@
       syncGameState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
+      if (data.state.isGameOver) {
+        showGameOverModal(data.state.gameOverData);
+      }
     }
     if (data.type === 'CHAT_MSG') {
       chatMessages.push(data.msg);
@@ -615,13 +548,13 @@
   }
 
   function broadcast(data) {
-    Object.values(clientConns).forEach(c => {
-      if (c && c.open) c.send(data);
+    clientConns.forEach(c => {
+      if (c.open) c.send(data);
     });
   }
 
   function hostStartGame() {
-    if (players.length < 1) return alert('Nejsou připojení žádní hráči!');
+    if (players.length < 2) return alert('K hraní jsou potřeba alespoň 2 hráči!');
 
     tileBag = [];
     CZECH_TILES.forEach(item => {
@@ -632,10 +565,12 @@
     tileBag.sort(() => Math.random() - 0.5);
 
     players.forEach(p => { p.rack = drawTiles(7); });
+    consecutivePasses = 0;
+    isGameOver = false;
 
+    notifyHostOrBroadcast();
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
-    notifyHostOrBroadcast();
   }
 
   function drawTiles(count) {
@@ -654,7 +589,8 @@
       boardState: JSON.parse(JSON.stringify(boardState)),
       currentCommentary,
       chatMessages: JSON.parse(JSON.stringify(chatMessages)),
-      gameEnded
+      isGameOver,
+      gameOverData: window._lastGameOverData || null
     };
   }
 
@@ -665,17 +601,20 @@
     boardState = JSON.parse(JSON.stringify(state.boardState || Array(15).fill(null).map(() => Array(15).fill(null))));
     currentCommentary = state.currentCommentary || '';
     chatMessages = JSON.parse(JSON.stringify(state.chatMessages || []));
-    gameEnded = !!state.gameEnded;
+    isGameOver = !!state.isGameOver;
 
     uncommitted = [];
     selectedRackIndices = [];
 
+    const boardEl = document.getElementById('board');
+    if (boardEl) boardEl.innerHTML = '';
+
     renderBoard();
     updateUI();
     updateChatUI();
-
-    if (gameEnded) {
-      showEndGameModal();
+    
+    if (isGameOver && state.gameOverData) {
+      showGameOverModal(state.gameOverData);
     }
   }
 
@@ -689,7 +628,6 @@
 
   function renderBoard() {
     const boardEl = document.getElementById('board');
-    if (!boardEl) return;
     boardEl.innerHTML = '';
     for (let r = 0; r < 15; r++) {
       for (let c = 0; c < 15; c++) {
@@ -707,7 +645,7 @@
 
         cell.ondragover = (e) => {
           e.preventDefault();
-          if (players[activePlayerIdx] && players[activePlayerIdx].id === myId && !boardState[r][c]) {
+          if (!isGameOver && players[activePlayerIdx] && players[activePlayerIdx].id === myId && !boardState[r][c]) {
             cell.classList.add('drag-over');
           }
         };
@@ -715,7 +653,7 @@
         cell.ondrop = (e) => {
           e.preventDefault();
           cell.classList.remove('drag-over');
-          if (!players[activePlayerIdx] || players[activePlayerIdx].id !== myId || boardState[r][c]) return;
+          if (isGameOver || !players[activePlayerIdx] || players[activePlayerIdx].id !== myId || boardState[r][c]) return;
           const rackIdxData = e.dataTransfer.getData('text/plain');
           if (rackIdxData !== '') {
             placeTileOnBoard(parseInt(rackIdxData, 10), r, c);
@@ -732,7 +670,7 @@
   }
 
   function updateUI() {
-    const myTurn = players[activePlayerIdx] && players[activePlayerIdx].id === myId && !gameEnded;
+    const myTurn = !isGameOver && players[activePlayerIdx] && players[activePlayerIdx].id === myId;
     
     document.getElementById('btn-play').disabled = !myTurn;
     document.getElementById('btn-swap').disabled = !myTurn;
@@ -749,15 +687,12 @@
     });
 
     document.getElementById('bag-count').innerText = tileBag.length;
-    document.getElementById('current-player-title').innerText = gameEnded ? "Hra skončila" : `Na tahu: ${players[activePlayerIdx] ? players[activePlayerIdx].name : '-'}`;
+    document.getElementById('current-player-title').innerText = isGameOver ? "Hra skončila" : `Na tahu: ${players[activePlayerIdx] ? players[activePlayerIdx].name : '-'}`;
 
     const commEl = document.getElementById('commentary');
-    if (commEl) {
-      commEl.querySelector('div:first-child').innerText = currentCommentary;
-    }
+    if (commEl) commEl.innerText = currentCommentary;
 
     renderRack();
-    updatePreviewScore();
   }
 
   function getMyPlayer() {
@@ -766,12 +701,11 @@
 
   function renderRack() {
     const rackEl = document.getElementById('rack');
-    if (!rackEl) return;
     rackEl.innerHTML = '';
     const myPlayer = getMyPlayer();
     if (!myPlayer) return;
 
-    const isMyTurn = players[activePlayerIdx] && players[activePlayerIdx].id === myId && !gameEnded;
+    const isMyTurn = !isGameOver && players[activePlayerIdx] && players[activePlayerIdx].id === myId;
 
     myPlayer.rack.forEach((tile, idx) => {
       const tileEl = document.createElement('div');
@@ -816,7 +750,7 @@
   }
 
   function onCellClick(r, c) {
-    if (!players[activePlayerIdx] || players[activePlayerIdx].id !== myId || gameEnded) return;
+    if (isGameOver || !players[activePlayerIdx] || players[activePlayerIdx].id !== myId) return;
     if (selectedRackIndices.length === 1 && !boardState[r][c]) {
       placeTileOnBoard(selectedRackIndices[0], r, c);
     }
@@ -841,7 +775,6 @@
 
     renderBoard();
     renderRack();
-    updatePreviewScore();
   }
 
   function recallTiles() {
@@ -856,22 +789,40 @@
     selectedRackIndices = [];
     renderBoard();
     renderRack();
-    updatePreviewScore();
   }
 
-  function updatePreviewScore() {
-    const previewBox = document.getElementById('preview-score-box');
-    if (!previewBox) return;
-    if (uncommitted.length === 0) {
-      previewBox.innerText = "";
-      return;
+  function playTurn() {
+    if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
+
+    const myPlayer = getMyPlayer();
+    const currentRackState = JSON.parse(JSON.stringify(myPlayer.rack));
+    const uncommittedCopy = JSON.parse(JSON.stringify(uncommitted));
+    const boardStateCopy = JSON.parse(JSON.stringify(boardState));
+
+    if (isHost) {
+      processTurnLogic(activePlayerIdx, uncommittedCopy, boardStateCopy, currentRackState);
+    } else {
+      hostConn.send({ 
+        type: 'PLAY_TURN', 
+        uncommitted: uncommittedCopy, 
+        boardState: boardStateCopy, 
+        rack: currentRackState 
+      });
     }
-    const score = calculateTurnScore(uncommitted, boardState);
-    previewBox.innerText = `Náhled tahu: +${score} bodů`;
   }
 
-  function calculateTurnScore(turnUncommitted, currentBoardState) {
+  function handleRemoteTurn(data) {
+    const targetPlayerIdx = activePlayerIdx; 
+    players[targetPlayerIdx].rack = data.rack;
+    uncommitted = data.uncommitted;
+    boardState = data.boardState;
+    processTurnLogic(targetPlayerIdx, data.uncommitted, data.boardState, data.rack);
+  }
+
+  function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
+    consecutivePasses = 0; // Úspěšný tah nuluje počítadlo pasů
     let totalTurnScore = 0;
+    let countedTileKeys = new Set();
 
     function getWordTiles(startR, startC, isHorizontal) {
       let r = startR, c = startC;
@@ -898,6 +849,8 @@
           if (type === 'L3') tilePts *= 3;
           if (type === 'W2' || type === 'STAR') wordMultiplier *= 2;
           if (type === 'W3') wordMultiplier *= 3;
+
+          countedTileKeys.add(`${wt.r},${wt.c}`);
         }
         wordScore += tilePts;
       });
@@ -954,45 +907,6 @@
 
     if (turnUncommitted.length === 7) {
       totalTurnScore += 50;
-    }
-
-    return totalTurnScore;
-  }
-
-  function playTurn() {
-    if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
-
-    const myPlayer = getMyPlayer();
-    const currentRackState = JSON.parse(JSON.stringify(myPlayer.rack));
-    const uncommittedCopy = JSON.parse(JSON.stringify(uncommitted));
-    const boardStateCopy = JSON.parse(JSON.stringify(boardState));
-
-    if (isHost) {
-      processTurnLogic(activePlayerIdx, uncommittedCopy, boardStateCopy, currentRackState);
-    } else {
-      hostConn.send({ 
-        type: 'PLAY_TURN', 
-        uncommitted: uncommittedCopy, 
-        boardState: boardStateCopy, 
-        rack: currentRackState,
-        playerId: myId
-      });
-    }
-  }
-
-  function handleRemoteTurn(data) {
-    const targetPlayerIdx = players.findIndex(p => p.id === data.playerId);
-    if (targetPlayerIdx === -1) return;
-    players[targetPlayerIdx].rack = data.rack;
-    uncommitted = data.uncommitted;
-    boardState = data.boardState;
-    processTurnLogic(targetPlayerIdx, data.uncommitted, data.boardState, data.rack);
-  }
-
-  function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
-    let totalTurnScore = calculateTurnScore(turnUncommitted, currentBoardState);
-
-    if (turnUncommitted.length === 7) {
       currentCommentary = `🔥 ${players[playerIdx].name} zahrál BINGO (+50 bodů)!`;
     } else {
       currentCommentary = `✨ ${players[playerIdx].name} získal ${totalTurnScore} bodů.`;
@@ -1007,33 +921,19 @@
 
     uncommitted = [];
 
+    // KONTROLA KONCE HRY: Pytlík je prázdný a hráč vyprázdnil stojánek
     if (tileBag.length === 0 && players[playerIdx].rack.length === 0) {
-      gameEnded = true;
-      finalizeGameScores(playerIdx);
-    } else {
-      activePlayerIdx = (activePlayerIdx + 1) % players.length;
+      endGame(`${players[playerIdx].name} vyložil všechny kameny!`);
+      return;
     }
 
+    activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
-  }
-
-  function finalizeGameScores(emptiedPlayerIdx) {
-    let bonusSum = 0;
-    players.forEach((p, idx) => {
-      if (idx !== emptiedPlayerIdx) {
-        let penalty = 0;
-        p.rack.forEach(t => { penalty += t.pts; });
-        p.score -= penalty;
-        bonusSum += penalty;
-      }
-    });
-    players[emptiedPlayerIdx].score += bonusSum;
-    currentCommentary = `🏁 Hra skončila! Stolek vyprázdnil ${players[emptiedPlayerIdx].name}.`;
   }
 
   function passTurn() {
     if (!isHost) {
-      hostConn.send({ type: 'PASS_TURN', playerId: myId });
+      hostConn.send({ type: 'PASS_TURN' });
       return;
     }
     executePass();
@@ -1045,6 +945,14 @@
 
   function executePass() {
     currentCommentary = `⏭️ ${players[activePlayerIdx].name} vynechal tah.`;
+    consecutivePasses++;
+    
+    // KONTROLA KONCE HRY: Všichni hráči dvakrát za sebou pasovali
+    if (consecutivePasses >= players.length * 2) {
+      endGame("Hra skončila: Všichni hráči dvakrát po sobě pasovali.");
+      return;
+    }
+
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
   }
@@ -1069,21 +977,52 @@
     selectedRackIndices = [];
     currentCommentary = `🔄 ${myPlayer.name} vyměnil ${tilesToSwap.length} kamenů.`;
 
+    consecutivePasses = 0;
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
-
-    if (isHost) {
-      notifyHostOrBroadcast();
-    } else {
-      hostConn.send({ type: 'SWAP_TILES', state: getGameState() });
-    }
+    notifyHostOrBroadcast();
   }
 
-  function handleRemoteSwap(data) {
-    if (data.state) {
-      syncGameState(data.state);
-    }
+  function endGame(reasonText) {
+    isGameOver = true;
+    
+    // Závěrečné odečtení bodů za zbývající kameny ve stojánku
+    players.forEach(p => {
+      let penalty = 0;
+      p.rack.forEach(tile => {
+        penalty += tile.pts;
+      });
+      p.score -= penalty;
+      if (p.score < 0) p.score = 0;
+    });
+
+    // Seřazení hráčů podle skóre
+    let sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+
+    window._lastGameOverData = {
+      reason: reasonText,
+      ranking: sortedPlayers
+    };
+
+    notifyHostOrBroadcast();
   }
 
+  function showGameOverModal(data) {
+    document.getElementById('game-over-reason').innerText = data.reason;
+    const listEl = document.getElementById('final-scores-list');
+    listEl.innerHTML = '';
+
+    data.ranking.forEach((p, index) => {
+      const row = document.createElement('div');
+      row.className = `final-score-row ${index === 0 ? 'winner-highlight' : ''}`;
+      row.innerHTML = `<span>${index + 1}. ${p.name}</span> <span>${p.score} bodů</span>`;
+      listEl.appendChild(row);
+    });
+
+    document.getElementById('game-over-modal').style.display = 'flex';
+    document.getElementById('game-screen').style.display = 'flex';
+  }
+
+  // CHAT FUNKCE
   function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
@@ -1112,23 +1051,8 @@
     chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
-  function showEndGameModal() {
-    const overlay = document.getElementById('modal-overlay');
-    const results = document.getElementById('final-results');
-    if (!overlay || !results) return;
-    
-    let sorted = [...players].sort((a, b) => b.score - a.score);
-    results.innerHTML = sorted.map((p, i) => `
-      <p style="padding: 6px 0; border-bottom: 1px solid var(--border-color);">
-        <strong>${i+1}. ${escapeHtml(p.name)}</strong> — ${p.score} bodů
-      </p>
-    `).join('');
-
-    overlay.style.display = 'flex';
-  }
-
   function escapeHtml(str) {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 </script>
 </body>
