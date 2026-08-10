@@ -377,6 +377,7 @@
               <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
               <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
               <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528; grid-column: span 2;">Pass</button>
+              <button id="btn-end" onclick="manualEndGame()" style="background: linear-gradient(to bottom, #7b1fa2, #4a148c); color:#fff; border-color:#38006b; grid-column: span 2;">Ukončit hru</button>
             </div>
 
             <div class="commentary-box" id="commentary">
@@ -557,6 +558,9 @@
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
     if (data.type === 'PASS_TURN') handleRemotePass();
+    if (data.type === 'MANUAL_END') {
+      endGame("Hra byla ukončena ručně hráčem.");
+    }
     if (data.type === 'CHAT_MSG') {
       chatMessages.push(data.msg);
       broadcast({ type: 'CHAT_MSG', msg: data.msg });
@@ -713,6 +717,7 @@
     document.getElementById('btn-swap').disabled = !myTurn;
     document.getElementById('btn-recall').disabled = !myTurn;
     document.getElementById('btn-pass').disabled = !myTurn;
+    document.getElementById('btn-end').disabled = isGameOver;
 
     const sb = document.getElementById('scoreboard');
     sb.innerHTML = '';
@@ -947,6 +952,11 @@
     uncommitted = [];
     selectedRackIndices = [];
 
+    if (tileBag.length === 0 && players[playerIdx].rack.length === 0) {
+      endGame(`Hra skončila, protože ${players[playerIdx].name} vyčerpal(a) všechny kameny!`);
+      return;
+    }
+
     advanceTurnOrEndGame();
   }
 
@@ -974,7 +984,6 @@
   }
 
   function processSwapLogic(playerIdx, indicesToSwap, playerRack) {
-    // Seřadíme indexy sestupně, abychom při splice mazali od konce a neposunuli si zbývající indexy
     const sortedIndices = [...indicesToSwap].sort((a, b) => b - a);
     let returnedTiles = [];
 
@@ -1018,12 +1027,22 @@
     uncommitted = [];
     selectedRackIndices = [];
 
-    if (consecutivePasses >= players.length * 2 || tileBag.length === 0 && players.some(p => p.rack.length === 0)) {
+    if (consecutivePasses >= players.length * 2 || (tileBag.length === 0 && players.some(p => p.rack.length === 0))) {
       endGame("Hra skončila vyčerpáním kamenů nebo opakovaným pasováním.");
       return;
     }
 
     advanceTurnOrEndGame();
+  }
+
+  function manualEndGame() {
+    if (confirm('Opravdu chcete ručně ukončit hru?')) {
+      if (isHost) {
+        endGame("Hra byla ukončena ručně.");
+      } else {
+        hostConn.send({ type: 'MANUAL_END' });
+      }
+    }
   }
 
   function advanceTurnOrEndGame() {
