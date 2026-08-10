@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#121416">
-  <title>Scrabble Online – Multiplayer v11</title>
+  <title>Scrabble Online – Multiplayer v12</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -132,7 +132,7 @@
 <body>
   <div id="setup-screen">
     <h1>SCRABBLE ONLINE</h1>
-    <div class="sub">Multiplayer v11 • Bez slovníku</div>
+    <div class="sub">Multiplayer v12 • Bez slovníku</div>
     
     <label for="player-name-input">Tvoje jméno</label>
     <input id="player-name-input" maxlength="20" placeholder="Napiš své jméno" value="Hráč">
@@ -492,7 +492,7 @@
       const me = getMe();
       if (!me) return;
       const myTurn = canEditBoard();
-      localRack = localRack.length || uncommitted.length ? localRack : deep(me.rack);
+      if (!localRack.length && !uncommitted.length) localRack = deep(me.rack);
       localRack.forEach((t, idx) => {
         const el = document.createElement('div');
         el.className = 'tile' + (t.isWildcard ? ' wild' : '') + (selectedRackIndices.includes(idx) ? ' selected' : '');
@@ -565,13 +565,9 @@
     
     function recallTiles() {
       if (!canEditBoard() || !uncommitted.length) return;
-      const placed = uncommitted.map(x => x.tile);
       for (const u of uncommitted) boardState[u.r][u.c] = null;
-      const base = getMe()?.rack || [];
-      const ids = new Set(placed.map(t => t.id));
-      localRack = [...localRack, ...placed];
-      const all = deep(base).filter(t => !ids.has(t.id));
-      localRack = [...all, ...placed];
+      const me = getMe();
+      localRack = me ? deep(me.rack) : [];
       uncommitted = [];
       selectedRackIndices = [];
       renderBoard();
@@ -594,7 +590,6 @@
       }
     }
     
-    // ZDE JE ÚPLNĚ ODSTRANĚNA KONTROLA SLOV PODLE SLOVNÍKU (ZACHOVÁNA JEN GEOMETRIE TAHU)
     function validateTurn(player, placements) {
       if (!Array.isArray(placements) || !placements.length) return { ok: false, msg: 'Tah neobsahuje žádný kámen.' };
       if (placements.length > 7) return { ok: false, msg: 'Nelze položit více než 7 kamenů.' };
@@ -603,7 +598,6 @@
       for (const x of placements) {
         if (!Number.isInteger(x.r) || x.r < 0 || x.r > 14 || !Number.isInteger(x.c) || x.c < 0 || x.c > 14) return { ok: false, msg: 'Neplatná pozice kamene.' };
         if (seen.has(x.tile?.id)) return { ok: false, msg: 'Duplicitní kámen v tahu.' };
-        if (boardState[x.r][x.c]) return { ok: false, msg: 'Některé políčko je již obsazené.' };
         seen.add(x.tile.id);
       }
       
