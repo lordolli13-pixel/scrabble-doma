@@ -447,7 +447,6 @@
       return;
     }
     if (data.type === 'SHOW_REJECT_PROMPT') {
-      // Zobrazit dialog hráči, který tah zahrál, že s ním soupeř nesouhlasí
       pendingRejectPlayerId = data.requesterId;
       document.getElementById('reject-modal-text').innerText = `Hráč ${data.requesterName} nesouhlasí s vaším posledním tahem a požaduje jeho vrácení. Souhlasíte?`;
       document.getElementById('reject-modal').style.display = 'flex';
@@ -595,7 +594,6 @@
     document.getElementById('btn-pass').disabled = !myTurn;
     
     if (document.getElementById('btn-reject')) {
-      // Tlačítko pro neuznání je aktivní, pokud poslední tah zahrál NĚKDO JINÝ než aktuální hráč
       const canReject = lastMoveExists && lastMovePlayerId && lastMovePlayerId !== myId;
       document.getElementById('btn-reject').disabled = !canReject;
     }
@@ -873,7 +871,6 @@
       if (lastMovePlayerId === myId) {
         return alert('Nemůžeš neuznat svůj vlastní tah!');
       }
-      // Pokud je host tím, kdo chce neuznat tah klienta, pošleme klientovi výzvu
       const targetConn = clientConns.find(c => c.peer === lastMovePlayerId);
       if (targetConn && targetConn.open) {
         targetConn.send({
@@ -885,7 +882,6 @@
         updateUI();
       }
     } else {
-      // Klient posílá požadavek hostiteli
       if (lastMovePlayerId === myId) {
         return alert('Nemůžeš neuznat svůj vlastní tah!');
       }
@@ -902,12 +898,10 @@
 
   function handleRequestRejectFromClient(conn, data) {
     if (data.targetPlayerId === myId) {
-      // Host je tím, komu byl tah neuznán -> zobrazit modal
       pendingRejectPlayerId = data.requesterId;
       document.getElementById('reject-modal-text').innerText = `Hráč ${data.requesterName} nesouhlasí s vaším posledním tahem a požaduje jeho vrácení. Souhlasíte?`;
       document.getElementById('reject-modal').style.display = 'flex';
     } else {
-      // Přeposlat jinému klientovi
       const targetConn = clientConns.find(c => c.peer === data.targetPlayerId);
       if (targetConn && targetConn.open) {
         targetConn.send(data);
@@ -958,14 +952,12 @@
       return;
     }
 
-    // Obnova stavu z předchozího snapshotu
     players = JSON.parse(JSON.stringify(historyState.players));
     activePlayerIdx = historyState.activePlayerIdx;
     tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
     boardState = JSON.parse(JSON.stringify(historyState.boardState));
     currentCommentary = '↩️ Tah byl na základě nesouhlasu vrácen zpět.';
 
-    // Reset historie
     historyState = null;
     historyPlayerIdx = null;
     lastMoveExists = false;
