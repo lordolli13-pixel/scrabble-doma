@@ -932,32 +932,7 @@
     uncommitted = [];
 
     if (tileBag.length === 0 && players[playerIdx].rack.length === 0) {
-      endGame(`${players[playerIdx].name} vyložil všechny kameny!`);
-      return;
-    }
-
-    activePlayerIdx = (activePlayerIdx + 1) % players.length;
-    notifyHostOrBroadcast();
-  }
-
-  function passTurn() {
-    if (!isHost) {
-      hostConn.send({ type: 'PASS_TURN' });
-      return;
-    }
-    executePass();
-  }
-
-  function handleRemotePass() {
-    executePass();
-  }
-
-  function executePass() {
-    currentCommentary = `⏭️ ${players[activePlayerIdx].name} vynechal tah.`;
-    consecutivePasses++;
-    
-    if (consecutivePasses >= players.length * 2) {
-      endGame("Hra skončila: Všichni hráči dvakrát po sobě pasovali.");
+      endGame('Pytlík je prázdný a hráč rozebral všechny kameny!');
       return;
     }
 
@@ -966,117 +941,117 @@
   }
 
   function swapSelectedTiles() {
-    const myPlayer = getMyPlayer();
-    if (selectedRackIndices.length === 0) return alert('Vyberte kameny k výměně!');
+    const p = getMyPlayer();
+    if (!p) return;
+    if (selectedRackIndices.length === 0) return alert('Označte kameny k výměně!');
     if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dostatek kamenů pro výměnu!');
 
     selectedRackIndices.sort((a, b) => b - a);
-    const tilesToSwap = [];
-
+    const swappedTiles = [];
     selectedRackIndices.forEach(idx => {
-      tilesToSwap.push(myPlayer.rack.splice(idx, 1)[0]);
+      swappedTiles.push(p.rack.splice(idx, 1)[0]);
     });
 
-    const newTiles = drawTiles(tilesToSwap.length);
-    myPlayer.rack = myPlayer.rack.concat(newTiles);
-    tileBag = tileBag.concat(tilesToSwap);
+    const newTiles = drawTiles(swappedTiles.length);
+    p.rack = p.rack.concat(newTiles);
+    tileBag = tileBag.concat(swappedTiles);
     tileBag.sort(() => Math.random() - 0.5);
 
     selectedRackIndices = [];
-    currentCommentary = `🔄 ${myPlayer.name} vyměnil ${tilesToSwap.length} kamenů.`;
+    consecutivePasses++;
+    currentCommentary = `🔄 ${p.name} vyměnil kameny.`;
 
-    consecutivePasses = 0;
-    activePlayerIdx = (activePlayerIdx + 1) % players.length;
-
-    if (isHost) {
-      notifyHostOrBroadcast();
-    } else {
-      hostConn.send({ 
-        type: 'SWAP_TILES', 
-        rack: myPlayer.rack, 
-        tileBag: tileBag,
-        activePlayerIdx: activePlayerIdx,
-        currentCommentary: currentCommentary
-      });
+    if (consecutivePasses >= players.length * 2) {
+      endGame('Hráči dvakrát za sebou všichni passovali / měnili.');
+      return;
     }
-  }
 
-  function handleRemoteSwap(data) {
-    // Pokud požadavek přišel od klienta
-    const senderIdx = activePlayerIdx;
-    players[senderIdx].rack = data.rack;
-    tileBag = data.tileBag;
-    activePlayerIdx = data.activePlayerIdx;
-    currentCommentary = data.currentCommentary;
-    consecutivePasses = 0;
+    activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
   }
 
-  function endGame(reasonText) {
+  function passTurn() {
+    const p = getMyPlayer();
+    if (!p) return;
+    recallTiles();
+    consecutivePasses++;
+    currentCommentary = `⏭️ ${p.name} vynechal tah.`;
+
+    if (consecutivePasses >= players.length * 2) {
+      endGame('Hráči dvakrát za sebou všichni passovali.');
+      return;
+    }
+
+    activePlayerIdx = (activePlayerIdx + 1) % players.length;
+    notifyHostOrBroadcast();
+  }
+
+  function handleRemotePass() {
+    passTurn();
+  }
+
+  function handleRemoteSwap(data) {
+    swapSelectedTiles();
+  }
+
+  function endGame(reason) {
     isGameOver = true;
     
     players.forEach(p => {
       let penalty = 0;
-      p.rack.forEach(tile => {
-        penalty += tile.pts;
-      });
+      p.rack.forEach(t => { penalty += t.pts; });
       p.score -= penalty;
-      if (p.score < 0) p.score = 0;
     });
 
-    let sortedPlayers = [...players].sort((a, b) => b.score - a.score);
+    players.sort((a, b) => b.score - a.score);
+    const gameOverData = { reason, sortedPlayers: players };
+    window._lastGameOverData = gameOverData;
 
-    window._lastGameOverData = {
-      reason: reasonText,
-      ranking: sortedPlayers
-    };
-
+    currentCommentary = `🏁 Konec hry: ${reason}`;
     notifyHostOrBroadcast();
+    showGameOverModal(gameOverData);
   }
 
   function showGameOverModal(data) {
+    const modal = document.getElementById('game-over-modal');
     document.getElementById('game-over-reason').innerText = data.reason;
-    const listEl = document.getElementById('final-scores-list');
-    listEl.innerHTML = '';
+    const list = document.getElementById('final-scores-list');
+    list.innerHTML = '';
 
-    data.ranking.forEach((p, index) => {
+    data.sortedPlayers.forEach((p, idx) => {
       const row = document.createElement('div');
-      row.className = `final-score-row ${index === 0 ? 'winner-highlight' : ''}`;
-      row.innerHTML = `<span>${index + 1}. ${p.name}</span> <span>${p.score} bodů</span>`;
-      listEl.appendChild(row);
+      row.className = `final-score-row ${idx === 0 ? 'winner-highlight' : ''}`;
+      row.innerHTML = `<span>${idx + 1}. ${p.name}</span><span>${p.score} bodů</span>`;
+      list.appendChild(row);
     });
 
-    document.getElementById('game-over-modal').style.display = 'flex';
-    document.getElementById('game-screen').style.display = 'flex';
+    modal.style.display = 'flex';
   }
 
-  // CHAT FUNKCE
   function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (!text) return;
-
-    const msg = { author: myName, text: text };
+    const msg = { author: myName, text };
+    chatMessages.push(msg);
     input.value = '';
+    updateChatUI();
 
     if (isHost) {
-      chatMessages.push(msg);
-      broadcast({ type: 'CHAT_MSG', msg: msg });
-      updateChatUI();
+      broadcast({ type: 'CHAT_MSG', msg });
     } else {
-      hostConn.send({ type: 'CHAT_MSG', msg: msg });
+      hostConn.send({ type: 'CHAT_MSG', msg });
     }
   }
 
   function updateChatUI() {
-    const chatContainer = document.getElementById('chat-messages');
-    if (!chatContainer) return;
-    chatContainer.innerHTML = chatMessages.map(m => `
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = chatMessages.map(m => `
       <div class="chat-msg">
-        <span class="author">${escapeHtml(m.author)}:</span> ${escapeHtml(m.text)}
+        <span class="author">${m.author}:</span> ${escapeHtml(m.text)}
       </div>
     `).join('');
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    container.scrollTop = container.scrollHeight;
   }
 
   function escapeHtml(str) {
