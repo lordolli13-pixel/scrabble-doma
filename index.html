@@ -223,7 +223,7 @@
     .chat-panel {
       display: flex;
       flex-direction: column;
-      height: 380px;
+      height: 430px;
     }
     .chat-messages {
       flex: 1;
@@ -245,6 +245,28 @@
     .chat-msg .author {
       font-weight: bold;
       color: var(--honey-main);
+    }
+    .emoji-picker {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+      background: var(--bg-antracit-dark);
+      padding: 4px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+    }
+    .emoji-btn {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    .emoji-btn:hover {
+      background: var(--cell-default);
     }
     .chat-input-row {
       display: flex;
@@ -367,6 +389,21 @@
           <div class="panel chat-panel">
             <h3>Herní chat</h3>
             <div class="chat-messages" id="chat-messages"></div>
+            
+            <!-- PANEL SMAJLÍKŮ -->
+            <div class="emoji-picker">
+              <button class="emoji-btn" onclick="insertEmoji('😊')">😊</button>
+              <button class="emoji-btn" onclick="insertEmoji('😂')">😂</button>
+              <button class="emoji-btn" onclick="insertEmoji('👍')">👍</button>
+              <button class="emoji-btn" onclick="insertEmoji('🔥')">🔥</button>
+              <button class="emoji-btn" onclick="insertEmoji('❤️')">❤️</button>
+              <button class="emoji-btn" onclick="insertEmoji('🤔')">🤔</button>
+              <button class="emoji-btn" onclick="insertEmoji('😎')">😎</button>
+              <button class="emoji-btn" onclick="insertEmoji('👏')">👏</button>
+              <button class="emoji-btn" onclick="insertEmoji('😮')">😮</button>
+              <button class="emoji-btn" onclick="insertEmoji('🎉')">🎉</button>
+            </div>
+
             <div class="chat-input-row">
               <input type="text" id="chat-input" placeholder="Napište zprávu..." onkeydown="if(event.key==='Enter') sendChatMessage()">
               <button onclick="sendChatMessage()">Odeslat</button>
@@ -791,7 +828,6 @@
     renderRack();
   }
 
-  // --- OPRAVENÁ FUNKCE: POTVRZENÍ TAHU ---
   function playTurn() {
     if (uncommitted.length === 0) return alert('Nejdříve položte kameny na desku!');
 
@@ -931,72 +967,51 @@
     notifyHostOrBroadcast();
   }
 
-  // --- NOVÁ FUNKCE: VÝMĚNA PÍSMEN ---
+  // --- FUNKCE PRO VÝMĚNU PÍSMEN ---
   function swapSelectedTiles() {
-    if (selectedRackIndices.length === 0) {
-      return alert('Vyberte alespoň jeden kámen ze stojánku pro výměnu!');
-    }
-    if (tileBag.length < selectedRackIndices.length) {
-      return alert('V pytlíku není dostatek kamenů pro výměnu!');
-    }
+    if (selectedRackIndices.length === 0) return alert('Nejprve vyberte kameny na stojánku, které chcete vyměnit!');
+    if (tileBag.length < selectedRackIndices.length) return alert('V pytlíku není dostatek kamenů pro výměnu!');
 
+    recallTiles(); // Vrátí rozpracované kameny z desky zpět
     const myPlayer = getMyPlayer();
-    // Seřadíme index sestupně, abychom mohli bezpečně odebírat ze stojánku
-    selectedRackIndices.sort((a, b) => b - a);
 
-    const tilesToSwap = [];
+    selectedRackIndices.sort((a, b) => b - a); // Sestupně pro bezpečné mazání
+    const swappedTiles = [];
     selectedRackIndices.forEach(idx => {
-      let tile = myPlayer.rack.splice(idx, 1)[0];
-      if (tile.isWildcard) tile.assignedLetter = null;
-      tilesToSwap.push(tile);
+      swappedTiles.push(myPlayer.rack.splice(idx, 1)[0]);
     });
 
-    // Natáhneme nové kameny z pytlíku
-    const newTiles = drawTiles(tilesToSwap.length);
+    const newTiles = drawTiles(swappedTiles.length);
     myPlayer.rack = myPlayer.rack.concat(newTiles);
-
-    // Vyměněné kameny hodíme zpět do pytlíku a zamícháme
-    tileBag = tileBag.concat(tilesToSwap);
+    tileBag = tileBag.concat(swappedTiles);
     tileBag.sort(() => Math.random() - 0.5);
 
-    currentCommentary = `🔄 ${myPlayer.name} vyměnil ${tilesToSwap.length} kamenů.`;
     selectedRackIndices = [];
+    currentCommentary = `🔄 ${myPlayer.name} vyměnil ${swappedTiles.length} kamenů.`;
     consecutivePasses = 0;
-
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
 
     if (isHost) {
       notifyHostOrBroadcast();
     } else {
-      hostConn.send({
-        type: 'SWAP_TILES',
-        playerIdx: players.findIndex(p => p.id === myId),
-        rack: myPlayer.rack,
-        tileBag: tileBag,
-        activePlayerIdx: activePlayerIdx,
-        currentCommentary: currentCommentary
-      });
+      hostConn.send({ type: 'SWAP_TILES', state: getGameState() });
     }
   }
 
   function handleRemoteSwap(data) {
-    players[data.playerIdx].rack = data.rack;
-    tileBag = data.tileBag;
-    activePlayerIdx = data.activePlayerIdx;
-    currentCommentary = data.currentCommentary;
-    notifyHostOrBroadcast();
+    syncGameState(data.state);
   }
 
   function passTurn() {
+    recallTiles();
     consecutivePasses++;
-    currentCommentary = `⏩ ${players[activePlayerIdx].name} pasoval.`;
-    
+    currentCommentary = `⏭️ ${players[activePlayerIdx].name} pasóval tah.`;
+    activePlayerIdx = (activePlayerIdx + 1) % players.length;
+
     if (consecutivePasses >= players.length * 2) {
-      endGame("Hra skončila – všichni hráči dvakrát za sebou pasovali.");
+      endGame('Hra skončila, všichni hráči dvakrát za sebou pasóvali.');
       return;
     }
-
-    activePlayerIdx = (activePlayerIdx + 1) % players.length;
 
     if (isHost) {
       notifyHostOrBroadcast();
@@ -1007,51 +1022,47 @@
 
   function handleRemotePass() {
     consecutivePasses++;
-    currentCommentary = `⏩ ${players[activePlayerIdx].name} pasoval.`;
-    if (consecutivePasses >= players.length * 2) {
-      endGame("Hra skončila – všichni hráči dvakrát za sebou pasovali.");
-      return;
-    }
+    currentCommentary = `⏭️ ${players[activePlayerIdx].name} pasóval tah.`;
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
   }
 
   function endGame(reason) {
     isGameOver = true;
-    
-    // Odčítání bodů za zbývající kameny na stojánku
+    let maxScore = -999;
     players.forEach(p => {
-      let penalty = 0;
-      p.rack.forEach(t => penalty += t.pts);
-      p.score -= penalty;
+      if (p.score > maxScore) maxScore = p.score;
     });
 
-    players.sort((a, b) => b.score - a.score);
-
-    const gameOverData = { reason, players: JSON.parse(JSON.stringify(players)) };
+    const gameOverData = {
+      reason,
+      scores: players.map(p => ({ name: p.name, score: p.score, isWinner: p.score === maxScore }))
+    };
     window._lastGameOverData = gameOverData;
 
-    if (isHost) {
-      broadcast({ type: 'SYNC_STATE', state: getGameState() });
-    }
     showGameOverModal(gameOverData);
+    if (isHost) {
+      notifyHostOrBroadcast();
+    }
   }
 
   function showGameOverModal(data) {
-    const modal = document.getElementById('game-over-modal');
     document.getElementById('game-over-reason').innerText = data.reason;
-    
-    const list = document.getElementById('final-scores-list');
-    list.innerHTML = '';
-    
-    data.players.forEach((p, idx) => {
-      const row = document.createElement('div');
-      row.className = `final-score-row ${idx === 0 ? 'winner-highlight' : ''}`;
-      row.innerHTML = `<span>${idx + 1}. ${p.name}</span> <span>${p.score} bodů</span>`;
-      list.appendChild(row);
-    });
+    const listEl = document.getElementById('final-scores-list');
+    listEl.innerHTML = data.scores.map(s => `
+      <div class="final-score-row ${s.isWinner ? 'winner-highlight' : ''}">
+        <span>${s.name} ${s.isWinner ? '👑' : ''}</span>
+        <span>${s.score} b.</span>
+      </div>
+    `).join('');
+    document.getElementById('game-over-modal').style.display = 'flex';
+  }
 
-    modal.style.display = 'flex';
+  // --- FUNKCE PRO CHAT A SMAJLÍKY ---
+  function insertEmoji(emoji) {
+    const input = document.getElementById('chat-input');
+    input.value += emoji;
+    input.focus();
   }
 
   function sendChatMessage() {
@@ -1059,22 +1070,33 @@
     const text = input.value.trim();
     if (!text) return;
 
-    const msg = { author: myName, text };
+    const myPlayer = getMyPlayer();
+    const authorName = myPlayer ? myPlayer.name : myName;
+    const msg = { author: authorName, text: text };
+
     chatMessages.push(msg);
-    updateChatUI();
     input.value = '';
+    updateChatUI();
 
     if (isHost) {
-      broadcast({ type: 'CHAT_MSG', msg });
+      broadcast({ type: 'CHAT_MSG', msg: msg });
     } else {
-      hostConn.send({ type: 'CHAT_MSG', msg });
+      hostConn.send({ type: 'CHAT_MSG', msg: msg });
     }
   }
 
   function updateChatUI() {
     const container = document.getElementById('chat-messages');
-    container.innerHTML = chatMessages.map(m => `<div class="chat-msg"><span class="author">${m.author}:</span> ${m.text}</div>`).join('');
+    container.innerHTML = chatMessages.map(m => `
+      <div class="chat-msg">
+        <span class="author">${escapeHtml(m.author)}:</span> ${escapeHtml(m.text)}
+      </div>
+    `).join('');
     container.scrollTop = container.scrollHeight;
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 </script>
 </body>
