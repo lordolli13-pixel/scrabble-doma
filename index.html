@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#121416">
-  <title>Scrabble Online – Multiplayer v10</title>
+  <title>Scrabble Online – Multiplayer v11</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -61,11 +61,10 @@
     .cell.W2, .cell.STAR { background: var(--orange); }
     .cell.W3 { background: var(--red); }
     .cell.drag-over { outline: 3px solid var(--gold); filter: brightness(1.3); }
-    .cell.preview { box-shadow: inset 0 0 0 2px var(--gold); }
     
     .tile { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #fff, #e8e8e8); color: #111; border: 1px solid #c8c8c8; border-radius: 4px; font-weight: 900; font-family: Arial Black, Segoe UI, sans-serif; font-size: clamp(9px, 2.7cqw, 22px); position: relative; cursor: grab; user-select: none; box-shadow: 0 2px 4px #0008, inset 0 1px #fff; }
     .tile:active { cursor: grabbing; }
-    .tile .pts { position: absolute; right: 3px; bottom: 2px; font: 700 clamp(6px, 1.1cqw, 9px) Arial; color: #555; }
+    .tile .pts { position: absolute; right: 3px; bottom: 2px; font: 700 clamp(6px, 1.1cqw, 9px) Arial; color: #551; }
     .tile.wild { background: linear-gradient(135deg, #fff7d8, #e6d28d); }
     .tile.selected { outline: 3px solid var(--gold); box-shadow: 0 0 10px var(--gold); }
     
@@ -83,7 +82,6 @@
     
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; }
     .controls button { font-size: 12px; padding: 10px 6px; }
-    .controls .wide { grid-column: span 2; }
     
     .commentary { margin-top: 9px; padding: 9px; border: 1px solid var(--border); background: var(--bg); border-radius: 6px; min-height: 42px; text-align: center; font-size: 12px; display: flex; align-items: center; justify-content: center; }
     .chat-panel { height: 330px; display: flex; flex-direction: column; }
@@ -134,7 +132,7 @@
 <body>
   <div id="setup-screen">
     <h1>SCRABBLE ONLINE</h1>
-    <div class="sub">Multiplayer v10 • bez slovníku</div>
+    <div class="sub">Multiplayer v11 • Bez slovníku</div>
     
     <label for="player-name-input">Tvoje jméno</label>
     <input id="player-name-input" maxlength="20" placeholder="Napiš své jméno" value="Hráč">
@@ -389,7 +387,7 @@
       }
       const p = players.find(x => x.id === conn.peer);
       if (!p) return;
-      if (d.type === 'PLAY_TURN') hostPlayTurn(String(d.playerId || p.id), d.tiles, conn);
+      if (d.type === 'PLAY_TURN') hostPlayTurn(String(d.playerId || p.id), d.tiles);
       else if (d.type === 'PASS') hostPass(String(d.playerId || p.id));
       else if (d.type === 'SWAP') hostSwap(String(d.playerId || p.id), d.tileIds);
       else if (d.type === 'CHAT') hostChat(String(d.playerId || p.id), d.text);
@@ -589,32 +587,36 @@
       turnPending = true;
       updateUI();
       if (isHost) {
-        hostPlayTurn(myId, tiles, null);
+        hostPlayTurn(myId, tiles);
       } else {
         const ok = sendHost({ type: 'PLAY_TURN', playerId: myId, tiles });
         if (!ok) { turnPending = false; updateUI(); alert('Nepodařilo se odeslat tah. Zkontrolujte spojení.'); }
       }
     }
     
-    // ZDE JE ÚPLNĚ ODSTRANĚNA KONTROLA SLOV PODLE SLOVNÍKU
+    // ZDE JE ÚPLNĚ ODSTRANĚNA KONTROLA SLOV PODLE SLOVNÍKU (ZACHOVÁNA JEN GEOMETRIE TAHU)
     function validateTurn(player, placements) {
       if (!Array.isArray(placements) || !placements.length) return { ok: false, msg: 'Tah neobsahuje žádný kámen.' };
       if (placements.length > 7) return { ok: false, msg: 'Nelze položit více než 7 kamenů.' };
-      const ids = new Set(player.rack.map(t => t.id));
+      
       const seen = new Set();
       for (const x of placements) {
         if (!Number.isInteger(x.r) || x.r < 0 || x.r > 14 || !Number.isInteger(x.c) || x.c < 0 || x.c > 14) return { ok: false, msg: 'Neplatná pozice kamene.' };
-        if (seen.has(x.tile?.id) || !ids.has(x.tile?.id)) return { ok: false, msg: 'Neplatný nebo duplicitní kámen.' };
+        if (seen.has(x.tile?.id)) return { ok: false, msg: 'Duplicitní kámen v tahu.' };
         if (boardState[x.r][x.c]) return { ok: false, msg: 'Některé políčko je již obsazené.' };
         seen.add(x.tile.id);
       }
+      
       const rows = placements.map(x => x.r), cols = placements.map(x => x.c);
       const sameRow = rows.every(r => r === rows[0]), sameCol = cols.every(c => c === cols[0]);
       if (!sameRow && !sameCol) return { ok: false, msg: 'Kameny musí být v jednom řádku nebo sloupci.' };
-      if (boardState.every(row => row.every(x => x === null))) {
+      
+      const isFirstMove = boardState.every(row => row.every(x => x === null));
+      if (isFirstMove) {
         if (!placements.some(x => x.r === 7 && x.c === 7)) return { ok: false, msg: 'První tah musí procházet středovým políčkem ★.' };
-        if (placements.length < 2) return { ok: false, msg: 'První slovo musí mít alespoň 2 písmena.' };
+        if (placements.length < 2) return { ok: false, msg: 'První tah musí mít alespoň 2 kameny.' };
       }
+      
       const temp = deep(boardState);
       placements.forEach(x => temp[x.r][x.c] = deep(x.tile));
       const ordered = [...placements].sort((a, b) => sameRow ? a.c - b.c : a.r - b.r);
@@ -622,9 +624,9 @@
         if (sameRow && ordered[i].c !== ordered[i - 1].c + 1) return { ok: false, msg: 'Mezi kameny nesmí být mezera.' };
         if (sameCol && ordered[i].r !== ordered[i - 1].r + 1) return { ok: false, msg: 'Mezi kameny nesmí být mezera.' };
       }
-      const oldCount = boardState.flat().filter(Boolean).length;
-      let touches = false;
-      if (oldCount > 0) {
+      
+      let touches = isFirstMove;
+      if (!isFirstMove) {
         for (const x of placements) {
           for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
             const rr = x.r + dr, cc = x.c + dc;
@@ -632,7 +634,8 @@
           }
         }
       }
-      if (oldCount > 0 && !touches) return { ok: false, msg: 'Nový tah musí navazovat na existující kameny.' };
+      if (!touches) return { ok: false, msg: 'Nový tah musí navazovat na existující kameny.' };
+      
       return { ok: true, temp, sameRow, sameCol };
     }
     
@@ -688,42 +691,54 @@
       return { score, words, bingo: placements.length === 7 };
     }
     
-    function hostPlayTurn(playerId, placements, sourceConn = null) {
+    function hostPlayTurn(playerId, placements) {
       if (!isHost || isGameOver) return;
       if (players[activePlayerIdx]?.id !== playerId) {
-        const msg = 'Tento hráč právě není na tahu.';
-        if (playerId === myId) alert(msg); else sendToPlayer(playerId, { type: 'ERROR', message: msg });
+        if (playerId === myId) alert('Tento hráč právě není na tahu.');
+        else sendToPlayer(playerId, { type: 'ERROR', message: 'Tento hráč právě není na tahu.' });
         return;
       }
       const p = players.find(x => x.id === playerId);
-      if (!p) { sendToPlayer(playerId, { type: 'ERROR', message: 'Hráč nebyl nalezen.' }); return; }
+      if (!p) return;
+      
       const v = validateTurn(p, placements);
       if (!v.ok) {
-        if (playerId === myId) alert(v.msg); else sendToPlayer(playerId, { type: 'ERROR', message: v.msg });
+        if (playerId === myId) alert(v.msg);
+        else sendToPlayer(playerId, { type: 'ERROR', message: v.msg });
+        turnPending = false;
+        updateUI();
         return;
       }
-      const canonical = p.rack.reduce((m, t) => (m.set(t.id, t), m), new Map());
-      const safePlacements = placements.map(x => {
-        const base = canonical.get(x.tile.id);
-        return {
+      
+      const rackMap = new Map(p.rack.map(t => [t.id, t]));
+      const safePlacements = [];
+      for (const x of placements) {
+        const base = rackMap.get(x.tile?.id);
+        if (!base) {
+          const msg = 'Chyba: Některý kámen nepatří do vašeho stojánku.';
+          if (playerId === myId) alert(msg); else sendToPlayer(playerId, { type: 'ERROR', message: msg });
+          turnPending = false;
+          updateUI();
+          return;
+        }
+        safePlacements.push({
           r: x.r,
           c: x.c,
-          tile: { ...deep(base), assignedLetter: base.isWildcard ? String(x.tile.assignedLetter || '').toUpperCase() : null }
-        };
-      });
-      if (safePlacements.some(x => x.tile.isWildcard && !CZECH_TILES.some(d => d.l === x.tile.assignedLetter && d.l !== '★'))) {
-        const msg = 'Neplatné písmeno žolíku.';
-        if (playerId === myId) alert(msg); else sendToPlayer(playerId, { type: 'ERROR', message: msg });
-        return;
+          tile: { ...base, assignedLetter: base.isWildcard ? String(x.tile.assignedLetter || '').toUpperCase() : null }
+        });
       }
+      
       const calc = calculateScore(v.temp, safePlacements, v.sameRow, v.sameCol);
-      const used = new Set(safePlacements.map(x => x.tile.id));
-      p.rack = p.rack.filter(t => !used.has(t.id));
+      const usedIds = new Set(safePlacements.map(x => x.tile.id));
+      p.rack = p.rack.filter(t => !usedIds.has(t.id));
       safePlacements.forEach(x => v.temp[x.r][x.c] = deep(x.tile));
       boardState = v.temp;
+      
       const need = 7 - p.rack.length;
       p.rack.push(...drawTiles(need));
       p.score += calc.score;
+      p._passes = 0;
+      
       const names = calc.words.map(w => w.text).filter(Boolean);
       history.push({
         player: p.name,
@@ -732,11 +747,13 @@
         time: new Date().toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })
       });
       if (history.length > 50) history.shift();
+      
       currentCommentary = calc.bingo ? `🔥 ${p.name} – BINGO! +${calc.score} bodů` : `✨ ${p.name} zahrál tah za ${calc.score} bodů.`;
       uncommitted = [];
       localRack = [];
       selectedRackIndices = [];
       turnPending = false;
+      
       if (tileBag.length === 0 && p.rack.length === 0) return finishGame('Pytlík je prázdný a hráč nemá žádný kámen.');
       activePlayerIdx = (activePlayerIdx + 1) % players.length;
       sendState();
@@ -835,7 +852,7 @@
       document.getElementById('btn-pass').disabled = !myTurn;
       document.getElementById('bag-count').textContent = isHost ? tileBag.length : clientBagCount;
       document.getElementById('current-player-title').textContent = 'Na tahu: ' + (players[activePlayerIdx]?.name || '–');
-      document.getElementById('turn-hint').textContent = myTurn ? (uncommitted.length ? 'Kameny jsou na desce, potvrďte tah.' : 'Vyberte kameny z lízátka na desku.') : ('Čeká se na hráče: ' + (players[activePlayerIdx]?.name || ''));
+      document.getElementById('turn-hint').textContent = myTurn ? (uncommitted.length ? 'Kameny jsou na desce, potvrďte tah.' : 'Vyberte kameny ze stojánku na desku.') : ('Čeká se na hráče: ' + (players[activePlayerIdx]?.name || ''));
       renderScoreboard();
     }
     
