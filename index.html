@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer v7</title>
+  <title>Scrabble - Multiplayer v8</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -380,7 +380,7 @@
             </div>
 
             <div class="commentary-box" id="commentary">
-              🗣️ Scrabble Online v7
+              🗣️ Scrabble Online v8
             </div>
           </div>
         </div>
@@ -474,7 +474,7 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Scrabble Online v7";
+  let currentCommentary = "🗣️ Scrabble Online v8";
   let chatMessages = [];
   let consecutivePasses = 0;
   let isGameOver = false;
@@ -956,7 +956,7 @@
 
     const myPlayer = getMyPlayer();
     const currentRackState = JSON.parse(JSON.stringify(myPlayer.rack));
-    const indicesToSwap = [...selectedRackIndices].sort((a, b) => b - a);
+    const indicesToSwap = [...selectedRackIndices];
 
     if (isHost) {
       processSwapLogic(activePlayerIdx, indicesToSwap, currentRackState);
@@ -974,22 +974,28 @@
   }
 
   function processSwapLogic(playerIdx, indicesToSwap, playerRack) {
+    // Seřadíme indexy sestupně, abychom při splice mazali od konce a neposunuli si zbývající indexy
+    const sortedIndices = [...indicesToSwap].sort((a, b) => b - a);
     let returnedTiles = [];
-    indicesToSwap.forEach(idx => {
+
+    sortedIndices.forEach(idx => {
       let t = playerRack.splice(idx, 1)[0];
-      if (t.isWildcard) t.assignedLetter = null;
-      returnedTiles.push(t);
+      if (t) {
+        if (t.isWildcard) t.assignedLetter = null;
+        returnedTiles.push(t);
+      }
     });
 
     tileBag.push(...returnedTiles);
     tileBag.sort(() => Math.random() - 0.5);
 
-    let drawn = drawTiles(indicesToSwap.length);
+    let drawn = drawTiles(returnedTiles.length);
     players[playerIdx].rack = playerRack.concat(drawn);
 
-    currentCommentary = `🔄 ${players[playerIdx].name} vyměnil(a) ${indicesToSwap.length} kamenů.`;
+    currentCommentary = `🔄 ${players[playerIdx].name} vyměnil(a) ${returnedTiles.length} kamenů.`;
     consecutivePasses = 0;
     selectedRackIndices = [];
+    uncommitted = [];
 
     advanceTurnOrEndGame();
   }
