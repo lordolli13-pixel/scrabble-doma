@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer v6</title>
+  <title>Scrabble - Multiplayer v7</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -72,7 +72,7 @@
     #game-screen { 
       display: none; 
       width: 100%; 
-      max-width: 1280px; 
+      max-width: 1350px; 
       justify-content: center;
     }
     
@@ -84,7 +84,7 @@
       align-items: center;
     }
 
-    @media (min-width: 900px) {
+    @media (min-width: 1000px) {
       .layout {
         flex-direction: row;
         align-items: flex-start;
@@ -166,6 +166,22 @@
     #rack .tile .pts { font-size: 10px; }
     .tile.selected { outline: 3px solid var(--honey-main); box-shadow: 0 0 8px var(--honey-main); }
 
+    .sidebars-wrapper {
+      display: flex;
+      gap: 15px;
+      flex-direction: column;
+      width: 100%;
+      max-width: 380px;
+      flex-shrink: 0;
+    }
+
+    @media (min-width: 1250px) {
+      .sidebars-wrapper {
+        flex-direction: row;
+        max-width: 720px;
+      }
+    }
+
     .sidebar { 
       display: flex; 
       flex-direction: column; 
@@ -201,6 +217,51 @@
       border-radius: 4px; font-size: 13px; color: var(--honey-light);
       font-style: italic; min-height: 48px; display: flex;
       align-items: center; justify-content: center; text-align: center;
+    }
+
+    /* CHAT STYLES */
+    .chat-panel {
+      display: flex;
+      flex-direction: column;
+      height: 380px;
+    }
+    .chat-messages {
+      flex: 1;
+      background: var(--bg-antracit-dark);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 8px;
+      overflow-y: auto;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .chat-msg {
+      word-break: break-word;
+      line-height: 1.3;
+    }
+    .chat-msg .author {
+      font-weight: bold;
+      color: var(--honey-main);
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 6px;
+    }
+    .chat-input-row input {
+      flex: 1;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-antracit-dark);
+      color: #ffffff;
+      font-size: 13px;
+    }
+    .chat-input-row button {
+      padding: 8px 12px;
+      font-size: 13px;
     }
   </style>
 </head>
@@ -241,30 +302,43 @@
         <div id="board"></div>
       </div>
 
-      <div class="sidebar">
-        <div class="panel">
-          <h3>Skóre</h3>
-          <div id="scoreboard"></div>
-          <p style="margin-top: 8px; font-size: 12px; color: #9da5ac;">Kamenů v pytlíku: <strong id="bag-count" style="color:var(--honey-light);">0</strong></p>
+      <div class="sidebars-wrapper">
+        <div class="sidebar">
+          <div class="panel">
+            <h3>Skóre</h3>
+            <div id="scoreboard"></div>
+            <p style="margin-top: 8px; font-size: 12px; color: #9da5ac;">Kamenů v pytlíku: <strong id="bag-count" style="color:var(--honey-light);">0</strong></p>
+          </div>
+
+          <div class="panel">
+            <h3 id="current-player-title">Na tahu: -</h3>
+            <p style="font-size: 11px; color: #9da5ac; margin-bottom: 4px;">Moje kameny:</p>
+            
+            <div class="rack-container">
+              <div id="rack"></div>
+            </div>
+            
+            <div class="controls">
+              <button id="btn-play" onclick="playTurn()">Potvrdit</button>
+              <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
+              <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
+              <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528; grid-column: span 2;">Pass</button>
+            </div>
+
+            <div class="commentary-box" id="commentary">
+              🗣️ Scrabble Online v7
+            </div>
+          </div>
         </div>
 
-        <div class="panel">
-          <h3 id="current-player-title">Na tahu: -</h3>
-          <p style="font-size: 11px; color: #9da5ac; margin-bottom: 4px;">Moje kameny:</p>
-          
-          <div class="rack-container">
-            <div id="rack"></div>
-          </div>
-          
-          <div class="controls">
-            <button id="btn-play" onclick="playTurn()">Potvrdit</button>
-            <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
-            <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
-            <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528; grid-column: span 2;">Pass</button>
-          </div>
-
-          <div class="commentary-box" id="commentary">
-            🗣️ Scrabble Online v6
+        <div class="sidebar">
+          <div class="panel chat-panel">
+            <h3>Herní chat</h3>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-row">
+              <input type="text" id="chat-input" placeholder="Napište zprávu..." onkeydown="if(event.key==='Enter') sendChatMessage()">
+              <button onclick="sendChatMessage()">Odeslat</button>
+            </div>
           </div>
         </div>
       </div>
@@ -321,7 +395,8 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Scrabble Online v6";
+  let currentCommentary = "🗣️ Scrabble Online v7";
+  let chatMessages = [];
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -401,6 +476,11 @@
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
     if (data.type === 'PASS_TURN') handleRemotePass();
+    if (data.type === 'CHAT_MSG') {
+      chatMessages.push(data.msg);
+      broadcast({ type: 'CHAT_MSG', msg: data.msg });
+      updateChatUI();
+    }
   }
 
   function handleClientMessage(data) {
@@ -413,6 +493,10 @@
       syncGameState(data.state);
       document.getElementById('setup-screen').style.display = 'none';
       document.getElementById('game-screen').style.display = 'flex';
+    }
+    if (data.type === 'CHAT_MSG') {
+      chatMessages.push(data.msg);
+      updateChatUI();
     }
   }
 
@@ -454,7 +538,8 @@
       activePlayerIdx,
       tileBag: JSON.parse(JSON.stringify(tileBag)),
       boardState: JSON.parse(JSON.stringify(boardState)),
-      currentCommentary
+      currentCommentary,
+      chatMessages: JSON.parse(JSON.stringify(chatMessages))
     };
   }
 
@@ -464,6 +549,7 @@
     tileBag = JSON.parse(JSON.stringify(state.tileBag || []));
     boardState = JSON.parse(JSON.stringify(state.boardState || Array(15).fill(null).map(() => Array(15).fill(null))));
     currentCommentary = state.currentCommentary || '';
+    chatMessages = JSON.parse(JSON.stringify(state.chatMessages || []));
 
     uncommitted = [];
     selectedRackIndices = [];
@@ -473,6 +559,7 @@
 
     renderBoard();
     updateUI();
+    updateChatUI();
   }
 
   function notifyHostOrBroadcast(messageType = 'SYNC_STATE') {
@@ -678,25 +765,39 @@
 
   function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
     let totalTurnScore = 0;
+    let countedTileKeys = new Set();
 
-    function calculateWordScore(startR, startC, isHorizontal) {
-      let r = startR, c = startC, wordScore = 0, wordMultiplier = 1, wordLength = 0;
+    function getWordTiles(startR, startC, isHorizontal) {
+      let r = startR, c = startC;
+      let tiles = [];
       while (r >= 0 && r < 15 && c >= 0 && c < 15 && currentBoardState[r][c] !== null) {
-        wordLength++;
-        let tile = currentBoardState[r][c];
-        let tilePts = tile.pts;
+        tiles.push({ r, c, tile: currentBoardState[r][c] });
+        if (isHorizontal) c++; else r++;
+      }
+      return tiles;
+    }
 
-        if (turnUncommitted.some(u => u.r === r && u.c === c)) {
-          let type = LAYOUT[r][c];
+    function evaluateSpecificWord(wordTiles) {
+      if (wordTiles.length <= 1) return 0;
+      let wordScore = 0;
+      let wordMultiplier = 1;
+
+      wordTiles.forEach(wt => {
+        let tilePts = wt.tile.pts;
+        let isNewlyPlaced = turnUncommitted.some(u => u.r === wt.r && u.c === wt.c);
+
+        if (isNewlyPlaced) {
+          let type = LAYOUT[wt.r][wt.c];
           if (type === 'L2') tilePts *= 2;
           if (type === 'L3') tilePts *= 3;
           if (type === 'W2' || type === 'STAR') wordMultiplier *= 2;
           if (type === 'W3') wordMultiplier *= 3;
+
+          countedTileKeys.add(`${wt.r},${wt.c}`);
         }
         wordScore += tilePts;
-        if (isHorizontal) c++; else r++;
-      }
-      return wordLength > 1 ? (wordScore * wordMultiplier) : 0;
+      });
+      return wordScore * wordMultiplier;
     }
 
     let rows = turnUncommitted.map(u => u.r);
@@ -705,16 +806,50 @@
 
     if (turnUncommitted.length === 1) {
       let r = turnUncommitted[0].r, c = turnUncommitted[0].c;
-      let scoreH = calculateWordScore(r, 0, true);
-      let scoreV = calculateWordScore(0, c, false);
+      
+      // Zkontrolujeme horizontální směr (doleva/doprava)
+      let startC = c;
+      while (startC > 0 && currentBoardState[r][startC - 1] !== null) startC--;
+      let wordH = getWordTiles(r, startC, true);
+
+      // Zkontrolujeme vertikální směr (nahoře/dole)
+      let startR = r;
+      while (startR > 0 && currentBoardState[startR - 1][c] !== null) startR--;
+      let wordV = getWordTiles(startR, c, false);
+
+      let scoreH = evaluateSpecificWord(wordH);
+      let scoreV = evaluateSpecificWord(wordV);
       totalTurnScore = Math.max(scoreH, scoreV);
     } else {
-      let mainWordScore = calculateWordScore(rows[0], cols[0], isHorizontal);
-      totalTurnScore += mainWordScore;
+      // Hlavní slovo
+      let startR = rows[0], startC = cols[0];
+      if (isHorizontal) {
+        while (startC > 0 && currentBoardState[startR][startC - 1] !== null) startC--;
+      } else {
+        while (startR > 0 && currentBoardState[startR - 1][startC] !== null) startR--;
+      }
+      let mainWordTiles = getWordTiles(startR, startC, isHorizontal);
+      totalTurnScore += evaluateSpecificWord(mainWordTiles);
 
+      // Křížová slova pro každý položený kámen
       turnUncommitted.forEach(u => {
-        let crossScore = isHorizontal ? calculateWordScore(0, u.c, false) : calculateWordScore(u.r, 0, true);
-        totalTurnScore += crossScore;
+        let crossStartR = u.r, crossStartC = u.c;
+        if (isHorizontal) {
+          while (crossStartR > 0 && currentBoardState[crossStartR - 1][crossStartC] !== null) crossStartR--;
+          let crossWord = getWordTiles(crossStartR, crossStartC, false);
+          totalTurnScore += evaluateSpecificWord(crossWord);
+        } else {
+          while (crossStartC > 0 && currentBoardState[crossStartR][crossStartC - 1] !== null) crossStartC--;
+          let crossWord = getWordTiles(crossStartR, crossStartC, true);
+          totalTurnScore += evaluateSpecificWord(crossWord);
+        }
+      });
+    }
+
+    // Bezpečnostní pojistka proti nespárovaným/izolovaným písmenům
+    if (totalTurnScore === 0) {
+      turnUncommitted.forEach(u => {
+        totalTurnScore += u.tile.pts;
       });
     }
 
@@ -778,6 +913,39 @@
 
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
+  }
+
+  // CHAT FUNKCE
+  function sendChatMessage() {
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const msg = { author: myName, text: text };
+    input.value = '';
+
+    if (isHost) {
+      chatMessages.push(msg);
+      broadcast({ type: 'CHAT_MSG', msg: msg });
+      updateChatUI();
+    } else {
+      hostConn.send({ type: 'CHAT_MSG', msg: msg });
+    }
+  }
+
+  function updateChatUI() {
+    const chatContainer = document.getElementById('chat-messages');
+    if (!chatContainer) return;
+    chatContainer.innerHTML = chatMessages.map(m => `
+      <div class="chat-msg">
+        <span class="author">${escapeHtml(m.author)}:</span> ${escapeHtml(m.text)}
+      </div>
+    `).join('');
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 </script>
 </body>
