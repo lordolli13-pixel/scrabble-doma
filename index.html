@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer v8</title>
+  <title>Scrabble - Multiplayer v9</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -346,7 +346,7 @@
             </div>
 
             <div class="commentary-box" id="commentary">
-              <div>🗣️ Scrabble Online v8</div>
+              <div>🗣️ Scrabble Online v9</div>
               <div class="preview-score" id="preview-score-box"></div>
             </div>
           </div>
@@ -416,7 +416,7 @@
   let myId = null;
   let isHost = false;
   let hostConn = null; 
-  let clientConns = {}; // Klíče jsou ID hráčů nebo spojení
+  let clientConns = {}; 
 
   let myName = "";
   let currentRoomCode = "";
@@ -426,7 +426,7 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Scrabble Online v8";
+  let currentCommentary = "🗣️ Scrabble Online v9";
   let chatMessages = [];
   let gameEnded = false;
 
@@ -439,23 +439,29 @@
     isHost = true;
     currentRoomCode = generateRoomCode();
 
-    peer = new Peer('scrabble-room-' + currentRoomCode);
+    // Unikátní ID pro hostitele v lokálním úložišti, aby se předešlo kolizím
+    let hostPeerId = 'scrabble-host-' + currentRoomCode;
+    peer = new Peer(hostPeerId);
 
     peer.on('open', (id) => {
       myId = id;
+      document.getElementById('setup-screen').style.display = 'none';
+      document.getElementById('game-screen').style.display = 'flex';
       document.getElementById('lobby-info').style.display = 'block';
       document.getElementById('room-code-display').innerText = currentRoomCode;
       document.getElementById('start-btn').style.display = 'block';
       document.getElementById('shuffle-btn').style.display = 'block';
       
+      // Hostitel je první hráč
       players = [{ id: myId, name: myName, score: 0, rack: [] }];
       updateLobbyUI();
+      renderBoard();
+      updateUI();
     });
 
     peer.on('connection', (conn) => {
       conn.on('data', (data) => handleHostMessage(conn, data));
       conn.on('close', () => {
-        // Kontrola odpojení klienta
         Object.keys(clientConns).forEach(id => {
           if (clientConns[id] === conn) {
             delete clientConns[id];
@@ -480,14 +486,13 @@
 
     currentRoomCode = roomCode;
     isHost = false;
-    connectToPeerHost(roomCode, true);
+    connectToPeerHost(roomCode);
   }
 
-  function connectToPeerHost(roomCode, isFirstTime = false) {
-    // Generujeme unikátní ID klienta, abychom se při reconnectu poznali
+  function connectToPeerHost(roomCode) {
     let clientId = localStorage.getItem('scrabble_client_id');
     if (!clientId) {
-      clientId = 'client-' + Math.random().toString(36.substring(2, 9));
+      clientId = 'client-' + Math.random().toString(36).substring(2, 9);
       localStorage.setItem('scrabble_client_id', clientId);
     }
     myId = clientId;
@@ -495,31 +500,27 @@
     peer = new Peer(myId);
 
     peer.on('open', (id) => {
-      hostConn = peer.connect('scrabble-room-' + roomCode);
+      hostConn = peer.connect('scrabble-host-' + roomCode);
 
       hostConn.on('open', () => {
         hostConn.send({ type: 'RECONNECT_OR_JOIN', name: myName, id: myId });
-        if (isFirstTime) {
-          document.getElementById('lobby-info').style.display = 'block';
-          document.getElementById('room-code-display').innerText = roomCode;
-        }
       });
 
       hostConn.on('data', (data) => handleClientMessage(data));
 
       hostConn.on('close', () => {
-        // Pokus o automatické znovupřipojení
         setTimeout(() => {
           if (!gameEnded) {
-            connectToPeerHost(roomCode, false);
+            connectToPeerHost(roomCode);
           }
         }, 3000);
       });
     });
 
     peer.on('error', (err) => {
-      if (err.type === 'unavailable-id') {
-        // ID už existuje, zkuste se připojit rovnou s novým ID pokud selže
+      if (err.type === 'peer-unavailable') {
+        alert('Místnost s tímto kódem nebyla nalezena.');
+      } else if (err.type === 'unavailable-id') {
         localStorage.removeItem('scrabble_client_id');
         location.reload();
       }
@@ -538,7 +539,9 @@
 
   function updateLobbyUI() {
     const list = document.getElementById('connected-players-list');
-    list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
+    if (list) {
+      list.innerHTML = players.map(p => `<li>• ${p.name}</li>`).join('');
+    }
   }
 
   function handleHostMessage(conn, data) {
@@ -549,7 +552,7 @@
         players.push({ id: data.id, name: data.name, score: 0, rack: [] });
         chatMessages.push({ author: 'Systém', text: `Hráč ${data.name} se připojil.` });
       } else {
-        existing.name = data.name; // Aktualizace jména při reconnectu
+        existing.name = data.name;
         chatMessages.push({ author: 'Systém', text: `Hráč ${data.name} se znovu připojil do hry.` });
       }
       updateLobbyUI();
@@ -557,10 +560,8 @@
       broadcast({ type: 'CHAT_MSG', msg: chatMessages[chatMessages.length - 1] });
       updateChatUI();
 
-      // Pokud už hra běží, pošleme novému/vracejícímu se hráči aktuální stav
-      if (tileBag.length > 0 || boardState.some(r => r.some(c => c !== null))) {
-        conn.send({ type: 'SYNC_STATE', state: getGameState() });
-      }
+      // Okamžitá synchronizace stavu pro nově příchozího/obnoveného hráče
+      conn.send({ type: 'SYNC_STATE', state: getGameState() });
     }
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
@@ -596,7 +597,7 @@
   }
 
   function hostStartGame() {
-    if (players.length < 2) return alert('K hraní jsou potřeba alespoň 2 hráči!');
+    if (players.length < 1) return alert('Nejsou připojení žádní hráči!');
 
     tileBag = [];
     CZECH_TILES.forEach(item => {
@@ -608,9 +609,9 @@
 
     players.forEach(p => { p.rack = drawTiles(7); });
 
-    notifyHostOrBroadcast();
     document.getElementById('setup-screen').style.display = 'none';
     document.getElementById('game-screen').style.display = 'flex';
+    notifyHostOrBroadcast();
   }
 
   function drawTiles(count) {
@@ -645,9 +646,6 @@
     uncommitted = [];
     selectedRackIndices = [];
 
-    const boardEl = document.getElementById('board');
-    if (boardEl) boardEl.innerHTML = '';
-
     renderBoard();
     updateUI();
     updateChatUI();
@@ -667,6 +665,7 @@
 
   function renderBoard() {
     const boardEl = document.getElementById('board');
+    if (!boardEl) return;
     boardEl.innerHTML = '';
     for (let r = 0; r < 15; r++) {
       for (let c = 0; c < 15; c++) {
@@ -743,6 +742,7 @@
 
   function renderRack() {
     const rackEl = document.getElementById('rack');
+    if (!rackEl) return;
     rackEl.innerHTML = '';
     const myPlayer = getMyPlayer();
     if (!myPlayer) return;
@@ -835,7 +835,6 @@
     updatePreviewScore();
   }
 
-  // Výpočet náhledu bodů tahu před odesláním
   function updatePreviewScore() {
     const previewBox = document.getElementById('preview-score-box');
     if (!previewBox) return;
@@ -951,13 +950,15 @@
         type: 'PLAY_TURN', 
         uncommitted: uncommittedCopy, 
         boardState: boardStateCopy, 
-        rack: currentRackState 
+        rack: currentRackState,
+        playerId: myId
       });
     }
   }
 
   function handleRemoteTurn(data) {
-    const targetPlayerIdx = activePlayerIdx; 
+    const targetPlayerIdx = players.findIndex(p => p.id === data.playerId);
+    if (targetPlayerIdx === -1) return;
     players[targetPlayerIdx].rack = data.rack;
     uncommitted = data.uncommitted;
     boardState = data.boardState;
@@ -982,7 +983,6 @@
 
     uncommitted = [];
 
-    // Detekce konce hry (došly kameny v pytlíku a hráč vyprázdnil stojánek)
     if (tileBag.length === 0 && players[playerIdx].rack.length === 0) {
       gameEnded = true;
       finalizeGameScores(playerIdx);
@@ -1009,7 +1009,7 @@
 
   function passTurn() {
     if (!isHost) {
-      hostConn.send({ type: 'PASS_TURN' });
+      hostConn.send({ type: 'PASS_TURN', playerId: myId });
       return;
     }
     executePass();
@@ -1046,10 +1046,20 @@
     currentCommentary = `🔄 ${myPlayer.name} vyměnil ${tilesToSwap.length} kamenů.`;
 
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
-    notifyHostOrBroadcast();
+
+    if (isHost) {
+      notifyHostOrBroadcast();
+    } else {
+      hostConn.send({ type: 'SWAP_TILES', state: getGameState() });
+    }
   }
 
-  // CHAT FUNKCE
+  function handleRemoteSwap(data) {
+    if (data.state) {
+      syncGameState(data.state);
+    }
+  }
+
   function sendChatMessage() {
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
@@ -1081,8 +1091,8 @@
   function showEndGameModal() {
     const overlay = document.getElementById('modal-overlay');
     const results = document.getElementById('final-results');
+    if (!overlay || !results) return;
     
-    // Seřadit hráče podle skóre
     let sorted = [...players].sort((a, b) => b.score - a.score);
     results.innerHTML = sorted.map((p, i) => `
       <p style="padding: 6px 0; border-bottom: 1px solid var(--border-color);">
