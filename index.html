@@ -202,21 +202,6 @@
       font-style: italic; min-height: 48px; display: flex;
       align-items: center; justify-content: center; text-align: center;
     }
-
-    /* Modal for Reject Confirmation */
-    #reject-modal {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;
-    }
-    .modal-content {
-      background: var(--bg-antracit-panel); padding: 25px; border-radius: 8px;
-      border: 1px solid var(--border-color); max-width: 400px; width: 100%; text-align: center;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.9);
-    }
-    .modal-content h3 { color: var(--honey-light); margin-bottom: 12px; }
-    .modal-content p { font-size: 14px; color: #9da5ac; margin-bottom: 20px; }
-    .modal-buttons { display: flex; gap: 10px; }
-    .modal-buttons button { flex: 1; }
   </style>
 </head>
 <body>
@@ -275,26 +260,13 @@
             <button id="btn-play" onclick="playTurn()">Potvrdit</button>
             <button id="btn-swap" onclick="swapSelectedTiles()" style="background: linear-gradient(to bottom, #2b6cb0, #1a4971); color:#fff; border-color:#153a5b;">Výměna</button>
             <button id="btn-recall" onclick="recallTiles()" style="background: linear-gradient(to bottom, #8c3a3a, #662222); color:#fff; border-color:#551111;">Vrátit</button>
-            <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528;">Pass</button>
-            <button id="btn-reject" onclick="requestRejectLastTurn()" style="grid-column: span 2; background: linear-gradient(to bottom, #b02b2b, #711a1a); color:#fff; border-color:#5b1515;" disabled>❌ Neuznat předchozí tah</button>
+            <button id="btn-pass" onclick="passTurn()" style="background: linear-gradient(to bottom, #4a5056, #33373b); color:#fff; border-color:#222528; grid-column: span 2;">Pass</button>
           </div>
 
           <div class="commentary-box" id="commentary">
             🗣️ Scrabble Online v6
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- MODÁLNÍ OKNO PRO SOUHLAS S NEUZNÁNÍM TAHU -->
-  <div id="reject-modal">
-    <div class="modal-content">
-      <h3>Neuznání tahu</h3>
-      <p id="reject-modal-text">Soupeř nesouhlasí s vaším posledním tahem a požaduje jeho vrácení. Souhlasíte?</p>
-      <div class="modal-buttons">
-        <button onclick="acceptReject()" style="background: linear-gradient(to bottom, #2b9845, #1b652e); color:#fff;">Souhlasit (Vrátit)</button>
-        <button onclick="declineReject()" style="background: linear-gradient(to bottom, #b02b2b, #711a1a); color:#fff;">Nesouhlasit</button>
       </div>
     </div>
   </div>
@@ -350,12 +322,6 @@
   let uncommitted = [];
   let selectedRackIndices = [];
   let currentCommentary = "🗣️ Scrabble Online v6";
-  
-  let historyState = null;
-  let historyPlayerIdx = null;
-  let lastMovePlayerId = null;
-  let lastMoveExists = false;
-  let pendingRejectPlayerId = null;
 
   function generateRoomCode() {
     return Math.floor(1000 + Math.random() * 9000).toString();
@@ -435,26 +401,12 @@
     if (data.type === 'PLAY_TURN') handleRemoteTurn(data);
     if (data.type === 'SWAP_TILES') handleRemoteSwap(data);
     if (data.type === 'PASS_TURN') handleRemotePass();
-    if (data.type === 'REQUEST_REJECT') handleRequestRejectFromClient(conn, data);
-    if (data.type === 'REJECT_ACCEPTED') handleRejectAccepted(data);
-    if (data.type === 'REJECT_DECLINED') handleRejectDeclined(data);
   }
 
   function handleClientMessage(data) {
     if (data.type === 'LOBBY_UPDATE') {
       players = data.players;
       updateLobbyUI();
-      return;
-    }
-    if (data.type === 'SHOW_REJECT_PROMPT') {
-      pendingRejectPlayerId = data.requesterId;
-      document.getElementById('reject-modal-text').innerText = `Hráč ${data.requesterName} nesouhlasí s vaším posledním tahem a požaduje jeho vrácení. Souhlasíte?`;
-      document.getElementById('reject-modal').style.display = 'flex';
-      return;
-    }
-    if (data.type === 'REJECT_DECLINED_RESULT') {
-      currentCommentary = data.message || '❌ Hráč odmítl vrátit tah.';
-      updateUI();
       return;
     }
     if (data.type === 'SYNC_STATE') {
@@ -502,9 +454,7 @@
       activePlayerIdx,
       tileBag: JSON.parse(JSON.stringify(tileBag)),
       boardState: JSON.parse(JSON.stringify(boardState)),
-      currentCommentary,
-      lastMoveExists: !!lastMoveExists,
-      lastMovePlayerId: lastMovePlayerId
+      currentCommentary
     };
   }
 
@@ -517,15 +467,6 @@
 
     uncommitted = [];
     selectedRackIndices = [];
-
-    lastMoveExists = !!state.lastMoveExists;
-    lastMovePlayerId = state.lastMovePlayerId || null;
-
-    if (!lastMoveExists) {
-      historyState = null;
-      historyPlayerIdx = null;
-      lastMovePlayerId = null;
-    }
 
     const boardEl = document.getElementById('board');
     if (boardEl) boardEl.innerHTML = '';
@@ -592,11 +533,6 @@
     document.getElementById('btn-swap').disabled = !myTurn;
     document.getElementById('btn-recall').disabled = !myTurn;
     document.getElementById('btn-pass').disabled = !myTurn;
-    
-    if (document.getElementById('btn-reject')) {
-      const canReject = lastMoveExists && lastMovePlayerId && lastMovePlayerId !== myId;
-      document.getElementById('btn-reject').disabled = !canReject;
-    }
 
     const sb = document.getElementById('scoreboard');
     sb.innerHTML = '';
@@ -721,7 +657,6 @@
     const boardStateCopy = JSON.parse(JSON.stringify(boardState));
 
     if (isHost) {
-      saveSnapshotBeforeTurn();
       processTurnLogic(activePlayerIdx, uncommittedCopy, boardStateCopy, currentRackState);
     } else {
       hostConn.send({ 
@@ -734,26 +669,11 @@
   }
 
   function handleRemoteTurn(data) {
-    saveSnapshotBeforeTurn();
     const targetPlayerIdx = activePlayerIdx; 
     players[targetPlayerIdx].rack = data.rack;
     uncommitted = data.uncommitted;
     boardState = data.boardState;
     processTurnLogic(targetPlayerIdx, data.uncommitted, data.boardState, data.rack);
-  }
-
-  function saveSnapshotBeforeTurn() {
-    historyState = {
-      players: JSON.parse(JSON.stringify(players)),
-      activePlayerIdx: activePlayerIdx,
-      tileBag: JSON.parse(JSON.stringify(tileBag)),
-      boardState: JSON.parse(JSON.stringify(boardState)),
-      currentCommentary: currentCommentary
-    };
-
-    historyPlayerIdx = activePlayerIdx;
-    lastMovePlayerId = players[activePlayerIdx]?.id || null;
-    lastMoveExists = !!lastMovePlayerId;
   }
 
   function processTurnLogic(playerIdx, turnUncommitted, currentBoardState, playerRack) {
@@ -831,7 +751,6 @@
   }
 
   function executePass() {
-    saveSnapshotBeforeTurn();
     currentCommentary = `⏭️ ${players[activePlayerIdx].name} vynechal tah.`;
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
     notifyHostOrBroadcast();
@@ -857,112 +776,7 @@
     selectedRackIndices = [];
     currentCommentary = `🔄 ${myPlayer.name} vyměnil ${tilesToSwap.length} kamenů.`;
 
-    saveSnapshotBeforeTurn();
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
-    notifyHostOrBroadcast();
-  }
-
-  // --- LOGIKA PRO NEUZNÁNÍ TAHU ---
-
-  function requestRejectLastTurn() {
-    if (!lastMoveExists || !lastMovePlayerId) return;
-
-    if (isHost) {
-      if (lastMovePlayerId === myId) {
-        return alert('Nemůžeš neuznat svůj vlastní tah!');
-      }
-      const targetConn = clientConns.find(c => c.peer === lastMovePlayerId);
-      if (targetConn && targetConn.open) {
-        targetConn.send({
-          type: 'SHOW_REJECT_PROMPT',
-          requesterId: myId,
-          requesterName: myName
-        });
-        currentCommentary = '⏳ Čeká se na souhlas soupeře s vrácením tahu...';
-        updateUI();
-      }
-    } else {
-      if (lastMovePlayerId === myId) {
-        return alert('Nemůžeš neuznat svůj vlastní tah!');
-      }
-      hostConn.send({
-        type: 'REQUEST_REJECT',
-        requesterId: myId,
-        requesterName: myName,
-        targetPlayerId: lastMovePlayerId
-      });
-      currentCommentary = '⏳ Odeslán požadavek na neuznání tahu...';
-      updateUI();
-    }
-  }
-
-  function handleRequestRejectFromClient(conn, data) {
-    if (data.targetPlayerId === myId) {
-      pendingRejectPlayerId = data.requesterId;
-      document.getElementById('reject-modal-text').innerText = `Hráč ${data.requesterName} nesouhlasí s vaším posledním tahem a požaduje jeho vrácení. Souhlasíte?`;
-      document.getElementById('reject-modal').style.display = 'flex';
-    } else {
-      const targetConn = clientConns.find(c => c.peer === data.targetPlayerId);
-      if (targetConn && targetConn.open) {
-        targetConn.send(data);
-      }
-    }
-  }
-
-  function acceptReject() {
-    document.getElementById('reject-modal').style.display = 'none';
-
-    if (isHost) {
-      executeRejectRollback();
-    } else {
-      hostConn.send({ type: 'REJECT_ACCEPTED', targetPlayerId: myId });
-    }
-  }
-
-  function declineReject() {
-    document.getElementById('reject-modal').style.display = 'none';
-
-    if (isHost) {
-      broadcast({ type: 'REJECT_DECLINED_RESULT', message: '❌ Hráč odmítl vrátit tah.' });
-      currentCommentary = '❌ Hráč odmítl vrátit tah.';
-      updateUI();
-    } else {
-      hostConn.send({ type: 'REJECT_DECLINED', targetPlayerId: myId });
-    }
-  }
-
-  function handleRejectAccepted(data) {
-    if (isHost) {
-      executeRejectRollback();
-    }
-  }
-
-  function handleRejectDeclined(data) {
-    if (isHost) {
-      broadcast({ type: 'REJECT_DECLINED_RESULT', message: '❌ Hráč odmítl vrátit tah.' });
-      currentCommentary = '❌ Hráč odmítl vrátit tah.';
-      updateUI();
-    }
-  }
-
-  function executeRejectRollback() {
-    if (!historyState) {
-      currentCommentary = '❌ Nelze vrátit tah (žádná historie).';
-      updateUI();
-      return;
-    }
-
-    players = JSON.parse(JSON.stringify(historyState.players));
-    activePlayerIdx = historyState.activePlayerIdx;
-    tileBag = JSON.parse(JSON.stringify(historyState.tileBag));
-    boardState = JSON.parse(JSON.stringify(historyState.boardState));
-    currentCommentary = '↩️ Tah byl na základě nesouhlasu vrácen zpět.';
-
-    historyState = null;
-    historyPlayerIdx = null;
-    lastMoveExists = false;
-    lastMovePlayerId = null;
-
     notifyHostOrBroadcast();
   }
 </script>
