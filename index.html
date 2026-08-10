@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Scrabble - Multiplayer v7</title>
+  <title>Scrabble - Multiplayer v8</title>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
   <style>
     :root {
@@ -203,7 +203,6 @@
       border: 1px solid transparent;
     }
     
-    /* ZVÝRAZNĚNÍ AKTIVNÍHO HRÁČE (BEZ PULZOVÁNÍ) */
     .player-row.active { 
       border: 2px solid var(--honey-main); 
       background: linear-gradient(135deg, #272c30 0%, #1a2228 100%); 
@@ -366,7 +365,7 @@
             </div>
 
             <div class="commentary-box" id="commentary">
-              🗣️ Scrabble Online v7
+              🗣️ Scrabble Online v8
             </div>
           </div>
         </div>
@@ -445,7 +444,7 @@
   let boardState = Array(15).fill(null).map(() => Array(15).fill(null));
   let uncommitted = [];
   let selectedRackIndices = [];
-  let currentCommentary = "🗣️ Scrabble Online v7";
+  let currentCommentary = "🗣️ Scrabble Online v8";
   let chatMessages = [];
   let consecutivePasses = 0;
   let isGameOver = false;
@@ -988,6 +987,28 @@
 
     consecutivePasses = 0;
     activePlayerIdx = (activePlayerIdx + 1) % players.length;
+
+    if (isHost) {
+      notifyHostOrBroadcast();
+    } else {
+      hostConn.send({ 
+        type: 'SWAP_TILES', 
+        rack: myPlayer.rack, 
+        tileBag: tileBag,
+        activePlayerIdx: activePlayerIdx,
+        currentCommentary: currentCommentary
+      });
+    }
+  }
+
+  function handleRemoteSwap(data) {
+    // Pokud požadavek přišel od klienta
+    const senderIdx = activePlayerIdx;
+    players[senderIdx].rack = data.rack;
+    tileBag = data.tileBag;
+    activePlayerIdx = data.activePlayerIdx;
+    currentCommentary = data.currentCommentary;
+    consecutivePasses = 0;
     notifyHostOrBroadcast();
   }
 
